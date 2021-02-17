@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import nan
 from scipy import optimize
 import os, sys, time, torch
 from tqdm import tqdm
@@ -47,6 +48,8 @@ class CCM():
 		self.tr = sim_prm[2].item() # Refractory time [in unit 'dt'](float).
 		self.atol, self.rtol = sim_prm[3].item(), sim_prm[4].item() # Absolute and relative tolerances for float comparison.
 		self.plot = plot
+		self.info = info
+		self.reject = reject
 		
 		if torch.isnan(sim_prm[5]) == True:
 			torch.manual_seed(time.time())
@@ -69,9 +72,6 @@ class CCM():
 		self.n = torch.distributions.normal.Normal(torch.tensor([0.0]), torch.tensor([1.0])) # Normal distribution of neural noise.
 
 
-		# Populational response functions, as derived from [Papasavvas, 2015].
-		# WE SUPPRESSED TWO FIRST PARAMETERS a_ & b_
-	
 	# Populational response functions, as derived from [Papasavvas, 2015].   MAYBE DEFINE THEM IN THE __INIT__() ? 
 	def f(self, a_, b_, x, b, a):
 		return .5 * ( 1. + torch.tanh( torch.as_tensor([.5 * ( (a_ / (1. + a)) * (x - b - b_) )]) ).item() ) - ( 1./(1. + torch.exp( torch.as_tensor([a_*b_/(1.+a)]) ).item() ) )
@@ -126,7 +126,7 @@ class CCM():
 			ind_e = self.q*self.wpe*rp # Divisive inhibitory input [1](float). 
 			Ie_adp += (self.dt/self.tau_adp) * ( - Ie_adp + re * self.J_adp ) # PYR activity-dependent adaptation current [1](float).
 			Ke = self.K(self.a_e, self.b_e, ind_e) # Response function plateau [1](float).
-			dre = (self.dt/self.tau) * ( - re + (self.Ae*Ke - self.tr*re)*self.f(self.a_e, self.b_e, ine_e, ins_e, ind_e)  ) + self.Ae * Ke * sqrt(self.dt) * self.sigma * self.n.sample().item() # PYR activity derivative [spikes/min²](float).
+			dre = (self.dt/self.tau) * ( - re + (self.Ae*Ke - self.tr*re)*self.f(self.a_e, self.b_e, ine_e, ins_e, ind_e)  ) + self.Ae * Ke * np.sqrt(self.dt) * self.sigma * self.n.sample().item() # PYR activity derivative [spikes/min²](float).
 			re += dre # PYR activity rate [spikes/min](float).
 			
 			# PV activity.
@@ -134,7 +134,7 @@ class CCM():
 			ins_p = self.wpp*rp + self.wvp*rv + self.wsp*rs # Substractive inhibitory input [1](float).
 			ind_p = 0. # Divisive inhibitory input [1](float).
 			Kp = self.K(self.a_p, self.b_p, ind_p) # Response function plateau [1](float).
-			drp = (self.dt/self.tau) * ( - rp + (self.Ap*Kp - self.tr*rp)*self.f(self.a_p, self.b_p, ine_p, ins_p, ind_p)  ) + self.Ap * Kp * sqrt(self.dt) * self.sigma * self.n.sample().item() # PV activity derivative [spikes/min²](float).
+			drp = (self.dt/self.tau) * ( - rp + (self.Ap*Kp - self.tr*rp)*self.f(self.a_p, self.b_p, ine_p, ins_p, ind_p)  ) + self.Ap * Kp * np.sqrt(self.dt) * self.sigma * self.n.sample().item() # PV activity derivative [spikes/min²](float).
 			rp += drp # PV activity rate [spikes/min](float).
 			
 			# SOM activity.
@@ -142,7 +142,7 @@ class CCM():
 			ins_s = self.wvs*rv # Substractive inhibitory input [1](float).
 			ind_s = 0. # Divisive inhibitory input [1](float).
 			Ks = self.K(self.a_s, self.b_s, ind_s) # Response function plateau [1](float).
-			drs = (self.dt/self.tau) * ( - rs + (self.As*Ks - self.tr*rs)*self.f(self.a_s, self.b_s, ine_s, ins_s, ind_s)  ) + self.As * Ks * sqrt(self.dt) * self.sigma * self.n.sample().item() # SOM activity derivative [spikes/min²](float).
+			drs = (self.dt/self.tau) * ( - rs + (self.As*Ks - self.tr*rs)*self.f(self.a_s, self.b_s, ine_s, ins_s, ind_s)  ) + self.As * Ks * np.sqrt(self.dt) * self.sigma * self.n.sample().item() # SOM activity derivative [spikes/min²](float).
 			rs += drs # SOM activity rate [spikes/min](float).
 
 			# VIP activity.
@@ -150,7 +150,7 @@ class CCM():
 			ins_v = self.wsv*rs # Substractive inhibitory input [1](float).
 			ind_v = 0. # Divisive inhibitory input [1](float). 
 			Kv = self.K(self.a_v, self.b_v, ind_v) # Response function plateau [1](float).
-			drv = (self.dt/self.tau) * ( - rv + (self.Av*Kv - self.tr*rv)*self.f(self.a_v, self.b_v, ine_v, ins_v, ind_v)  ) + self.Av * Kv * sqrt(self.dt) * self.sigma * self.n.sample().item() # VIP activity derivative [spikes/min²](float).
+			drv = (self.dt/self.tau) * ( - rv + (self.Av*Kv - self.tr*rv)*self.f(self.a_v, self.b_v, ine_v, ins_v, ind_v)  ) + self.Av * Kv * np.sqrt(self.dt) * self.sigma * self.n.sample().item() # VIP activity derivative [spikes/min²](float).
 			rv += drv # VIP activity rate [spikes/min](float).
 			
 			t = k * self.dt # Time [s](float).
@@ -216,120 +216,116 @@ class CCM():
 	
 			return [dre, drp, drs, drv]
 		
-		S = [random.uniform(size=4)]
+		S = [np.random.uniform(size=4)]
 		for k in tqdm(range(400)):
-			x0 = [400*random.uniform(size=4) - 200]
+			x0 = [400*np.random.uniform(size=4) - 200]
 			sol = optimize.root(F, x0, method='hybr')
-			if np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any() == False:
-				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all() == True:
+			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():
+				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all():
 					S.append(sol.x)
 		return S
 
 
-    def postproc(self, tsr, S, critic, info, reject):
-        """
-        
-        Entries:
-        -------
-        
-            plot = bool : option parameter (default is False) conditioning output's dimensionality.
-        
-        Outputs:
-        -------
-        
-        When plot is set to True:
-            
-            tsr = torch.Tensor(size=(17, _), device=dev, dtype=enc) : data tensor storing time-evolutions of all latent variables.
-            stim = torch.Tensor(size=_, device=dev, dtype=enc) : data tensor storing stimuli time-events. 
-            
-        When plot is set to False:
-        
-            tsr = torch.Tensor(size=(9, _), device=dev, dtype=enc) : data tensor storing time-evolutions of neural populations' rates and their derivatives.
-            
-        """ 
-        def med(t):
-            if torch.numel(t) == 0:
-                return 0.
-            else:
-                return torch.median(t).item()
-        
-        if reject == True and len(S)!=3:
-            return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
+	def postproc(self, tsr, S, critic, info, reject):
+		"""
+		
+		Entries:
+		-------
+		
+			plot = bool : option parameter (default is False) conditioning output's dimensionality.
+		
+		Outputs:
+		-------
+		
+		When plot is set to True:
+			
+			tsr = torch.Tensor(size=(17, _), device=dev, dtype=enc) : data tensor storing time-evolutions of all latent variables.
+			stim = torch.Tensor(size=_, device=dev, dtype=enc) : data tensor storing stimuli time-events. 
+			
+		When plot is set to False:
+		
+			tsr = torch.Tensor(size=(9, _), device=dev, dtype=enc) : data tensor storing time-evolutions of neural populations' rates and their derivatives.
+			
+		""" 
+		def med(t):
+			if torch.numel(t) == 0:
+				return 0.
+			else:
+				return torch.median(t).item()
+		
+		if reject and len(S)!=3:
+			if self.info : print("Model not bistable")
+			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 
-        # Sorting neural activities wrt to H/L states.
-        tsr_ = tsr.narrow(1, smin, smax)
-        
-        # TRY AND UNDERSTAND THIS PART
-        mask_he = torch.gt(tsr_[RE,:], critic[0].item())
-        mhe = med(tsr_[self.RE][mask_he])
-        md_he = (torch.sum(mask_he, dtype=enc).item() * self.dt) / (self.window*self.usf)
-        
-        if self.reject and np.isclose(md_he, 0., atol=self.atol, rtol=self.rtol):
-            if self.info == True:
-                print('\n Simulated dynamics never reached high activity state.')
-            return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
-        
-        mask_le = torch.le(tsr_[RE,:], critic[0].item())
-        mle = med(tsr_[self.RE][mask_le])
-        md_le = (torch.sum(mask_le, dtype=enc).item() * self.dt) / (self.window*self.usf)
-        
-        if reject and np.isclose(md_le, 0., atol=self.atol, rtol=self.rtol) == True:
-            if self.info == True:
-                print('\n Simulated dynamics never reached low activity state.')
-            return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
+		# Sorting neural activities wrt to H/L states.
+		tsr_ = tsr.narrow(1, self.smin, self.smax)
+		
+		# TRY AND UNDERSTAND THIS PART
+		mask_he = torch.gt(tsr_[self.RE,:], critic[0].item())
+		mhe = med(tsr_[self.RE][mask_he])
+		md_he = (torch.sum(mask_he, dtype=self.enc).item() * self.dt) / (self.window*self.usf)
+		
+		if self.reject and np.isclose(md_he, 0., atol=self.atol, rtol=self.rtol):
+			if self.info == True:
+				print('\n Simulated dynamics never reached high activity state.')
+			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
+		
+		mask_le = torch.le(tsr_[self.RE,:], critic[0].item())
+		mle = med(tsr_[self.RE][mask_le])
+		md_le = (torch.sum(mask_le, dtype=self.enc).item() * self.dt) / (self.window*self.usf)
+		
+		if reject and np.isclose(md_le, 0., atol=self.atol, rtol=self.rtol):
+			if self.info: print('\n Simulated dynamics never reached low activity state.')
+			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 
-        
-        mask_hp, mask_hs, mask_hv = torch.gt(tsr_[self.RP,:], critic[1].item()), torch.gt(tsr_[self.RS,:], critic[2].item()), torch.gt(tsr_[self.RV,:], critic[3].item())
-        mhp, mhs, mhv = med(tsr_[self.RP][mask_hp]), med(tsr_[RS][mask_hs]), med(tsr_[RV][mask_hv])
+		
+		mask_hp, mask_hs, mask_hv = torch.gt(tsr_[self.RP,:], critic[1].item()), torch.gt(tsr_[self.RS,:], critic[2].item()), torch.gt(tsr_[self.RV,:], critic[3].item())
+		mhp, mhs, mhv = med(tsr_[self.RP][mask_hp]), med(tsr_[self.RS][mask_hs]), med(tsr_[self.RV][mask_hv])
 
-        # Reject if saturation
-        if self.reject and (mhe / Ae > .45 or mhp / self.Ap > .45 or mhs / self.As > .45 or mhv / self.Av > .45) :
-            if self.info: print('\n Simulation has been terminated due to saturated dynamics.')
-            return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc) 
-        
-        # Reject if no high activity state 
-        if self.reject and np.isclose(md_he, 0., atol=self.atol, rtol=self.rtol):
-            if self.info: print('\n Simulated dynamics never reached high activity state.')
-            return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
-        
-        mask_lp, mask_ls, mask_lv = torch.le(tsr_[self.RP,:], critic[1].item()), torch.le(tsr_[self.RS,:], critic[2].item()), torch.le(tsr_[self.RV,:], critic[3].item())
-    
-        # Median activities in H/L states
-        me, mle = med(tsr_[self.RE,:]), med(tsr_[self.RE][mask_le])
-        mp, mlp = med(tsr_[self.RP,:]), med(tsr_[self.RP][mask_lp])
-        ms, mls = med(tsr_[self.RS,:]), med(tsr_[self.RS][mask_ls])
-        mv, mlv = med(tsr_[self.RV,:]), med(tsr_[self.RV][mask_lv])
+		# Reject if saturation
+		if self.reject and not all(activity < .45 for activity in [mhe / self.Ae, mhp / self.Ap, mhs / self.As, mhv/self.Av]) :
+			if self.info: print('\n Simulation has been terminated due to saturated dynamics.')
+			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc) 
+		
+		# Reject if no high activity state 
+		if self.reject and np.isclose(md_he, 0., atol=self.atol, rtol=self.rtol):
+			if self.info: print('\n Simulated dynamics never reached high activity state.')
+			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
+		
+		mask_lp, mask_ls, mask_lv = torch.le(tsr_[self.RP,:], critic[1].item()), torch.le(tsr_[self.RS,:], critic[2].item()), torch.le(tsr_[self.RV,:], critic[3].item())
+	
+		# Median activities in H/L states
+		me, mle = med(tsr_[self.RE,:]), med(tsr_[self.RE][mask_le])
+		mp, mlp = med(tsr_[self.RP,:]), med(tsr_[self.RP][mask_lp])
+		ms, mls = med(tsr_[self.RS,:]), med(tsr_[self.RS][mask_ls])
+		mv, mlv = med(tsr_[self.RV,:]), med(tsr_[self.RV][mask_lv])
    
-        # Summary statistics of simulated data
-        return torch.as_tensor([me, mp, ms, mv, mle, mlp, mls, mlv, mhe, mhp, mhs, mhv, md_le, md_he], device=self.dev, dtype=self.enc)
-    
+		# Summary statistics of simulated data
+		return torch.as_tensor([me, mp, ms, mv, mle, mlp, mls, mlv, mhe, mhp, mhs, mhv, md_le, md_he], device=self.dev, dtype=self.enc)
+
+		'''
 
 
 
+	## Maybe add an attribute which is a list of all ran simulations ? So that a model keeps a memory of all its simulations. 
+	# This way we return simulation stats and data but also store them in the class
 
+	eqs = get_equilibria()
+	tsr, stim = get_simulated_data(self.plot)
+	critic = torch.as_tensor(sort(eqs, 0)[1], device=self.dev, dtype=self.enc)
+	res = post_processing(tsr, eqs, critic, info, reject)
+		
+	if info == True:
+		print('\n Tested parameters: \n\n', dof,
+			  '\n\n Simulation window [s]: ', window, ' ; Time resolution [s]:', dt, ' ; Refractory period [dt]: ', tr,
+			  '\n\n Number of stimuli: ', len(stim), ' ; Data shape: ', tsr.size(),
+			  '\n\n Number of equilibria: ', len(eqs),
+			  '\n\n Equilibria: \n\n', sort(eqs, 0),
+			  '\n\n Summary statistics of simulated data: \n\n', res, '\n')
 
+	if plot == True:
+		return tsr, stim, eqs, critic, res
+	else:
+		return res
 
-
-
-
-
-    ## Maybe add an attribute which is a list of all ran simulations ? So that a model keeps a memory of all its simulations. 
-    # This way we return simulation stats and data but also store them in the class
-
-    eqs = get_equilibria()
-    tsr, stim = get_simulated_data(self.plot)
-    critic = torch.as_tensor(sort(eqs, 0)[1], device=self.dev, dtype=self.enc)
-    res = post_processing(tsr, eqs, critic, info, reject)
-        
-    if info == True:
-        print('\n Tested parameters: \n\n', dof,
-              '\n\n Simulation window [s]: ', window, ' ; Time resolution [s]:', dt, ' ; Refractory period [dt]: ', tr,
-              '\n\n Number of stimuli: ', len(stim), ' ; Data shape: ', tsr.size(),
-              '\n\n Number of equilibria: ', len(eqs),
-              '\n\n Equilibria: \n\n', sort(eqs, 0),
-              '\n\n Summary statistics of simulated data: \n\n', res, '\n')
-
-    if plot == True:
-        return tsr, stim, eqs, critic, res
-    else:
-        return res
+'''
