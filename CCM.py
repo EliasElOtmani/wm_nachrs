@@ -31,7 +31,7 @@ class CCM():
 		# Normalized synaptic weights [1 -> min/spikes](float).
 		self.wee, self.wpe, self.wse = dof[4].item() / self.Ae, self.gaba * dof[5].item() / self.Ae, self.gaba * dof[6].item() / self.Ae 
 		self.wes, self.wvs = dof[7].item() / self.As, dof[8].item() / self.As 
-		self.wep, self.wpp, self.wvp, self.wsp = dof[9].item() / self.Ap, self.gaba * dof[10].item() / self.Ap, .5*(self.Ap/self.As)*self.wvs, self.gaba * dof[11].item() / self.Ap
+		self.wep, self.wpp, self.wvp, self.wsp = dof[9].item() / self.Ap, self.gaba * dof[10].item() / self.Ap, .5*self.wvs, self.gaba * dof[11].item() / self.Ap
 		self.wev, self.wsv = dof[12].item() / self.Av, self.gaba * dof[13].item() / self.Av
 		
 		# External currents [1](float).
@@ -51,7 +51,7 @@ class CCM():
 		self.info = info
 		self.reject = reject
 		
-		if torch.isnan(sim_prm[5]) == True:
+		if torch.isnan(sim_prm[5]):
 			torch.manual_seed(time.time())
 		else:
 			torch.manual_seed(sim_prm[5])
