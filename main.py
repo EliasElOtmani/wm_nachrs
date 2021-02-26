@@ -5,6 +5,7 @@ import os, sys, time, torch
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from CCM import CCM
+from simpler_CCM import simpler_CCM
 
 # Convert tensor tens to np array : tens = tens.numpy()
 
@@ -18,15 +19,103 @@ dev = torch.device(computer)
 
 
 mod_prm = torch.as_tensor([.020, .600, .8, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7.], device=dev, dtype=enc)
-sim_prm = torch.as_tensor([20., .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
+sim_prm = torch.as_tensor([15., .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
 
 
 #########################################################################################################################################################
 # FREE PARAMETERS #
 ###################
 
-Ae, Ap, As, Av = 172., 261., 757., 664.
+
+# MROOY THESIS AND FIRST PREPRINT	/!\ Wvs taken as the value of the second wep in the thesis.    CHECK WSP
+################################# 
+
+Ae, Ap, As, Av = 169, 268, 709, 634
+dof = torch.as_tensor([
+    
+    Ae, Ap, As, Av, # Ae, Ap, As, Av (4)
+    # wee, 	  wpe,     wse,     wes,     wvs,     wep,     wpp,     wsp,     wev,     wsv (10) :
+    .136*Ae, .101*Ap, .002*As, .077*Ae, .048*Av, .112*Ae, .093*Ap, .0*As, .041*Ae, .001*As, 
+    3.9, 4.5, 3.6, 2.9, 4.5, # Ie_ext, Ip_ext, Is_ext, Iv_ext, I_trans (5)
+    .058*Ae, .01, 1/45 # J_adp, sigma, frequency of ultra-slow stimuli ('usf' : float)[Hz] (3)
+    
+], device=dev, dtype=enc)
+
+# Modifications : I_trans (.45 initially), usf (.15 initially), sigma (.001 initially)
+#NB : For I_tran, the threshold seems to be between 2 and 3 (2 not enough to elicit oscillations)
+
+
+############################################################################################################################################################
+
+
+info = True
+reject = True 
+plot = False 
+
+ccm = CCM(dof, mod_prm, sim_prm)
+ccm.simulate(dmts = True)
+sim = ccm.simulations[0]
+tsr, stim = sim.traces, sim.stimuli
+eqs = sim.S
+#res = sim.postproc()
+tsr = tsr.numpy()
 '''
+if info:
+	print('\n Tested parameters: \n\n', dof,
+		  '\n\n Simulation window [s]: ', sim.window, ' ; Time resolution [s]:', sim.dt, ' ; Refractory period [dt]: ', sim.tr,
+		  '\n\n Number of stimuli: ', len(stim), ' ; Data shape: ', tsr.shape,
+		  '\n\n Number of equilibria: ', len(eqs),
+		  '\n\n Equilibria: \n\n', np.sort(eqs, 0),
+		  '\n\n Summary statistics of simulated data: \n\n', res, '\n')
+'''
+
+#print(ccm.equilibria())
+
+
+fig, ax = plt.subplots()
+plt.plot(tsr[0,:], color = 'red', linewidth = 2)
+plt.show()
+
+
+
+# So now we'll have to find a mode "task" that replaces the poisson input by 
+# dirac (have to modify body of CCM) + modify parameters 
+# for now get summary stats ! 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'''
+Ae, Ap, As, Av = 172., 261., 757., 664.
+
 dof = torch.as_tensor([
     
     Ae, Ap, As, Av, # Ae, Ap, As, Av (4)
@@ -36,8 +125,8 @@ dof = torch.as_tensor([
     .056*Ae, .001, .15 # J_adp, sigma, frequency of ultra-slow stimuli ('usf' : float)[Hz] (3)
     
 ], device=dev, dtype=enc)
-'''
-'''
+
+
 # PREPRINT
 #dof = torch.as_tensor([Ae,Ap,As,Av,.137, .101, .002, .077, .048, .113, .093, .024, .004, .042, .001, .056, .015, 3.9, 4.5, 3.6, 2.9, .5], device=dev, dtype=enc)
 dof = torch.as_tensor([5.4093e+02, 1.2520e+02, 5.6639e+02, 3.4478e+02, 3.8753e+01, 1.0218e+00,
@@ -45,7 +134,7 @@ dof = torch.as_tensor([5.4093e+02, 1.2520e+02, 5.6639e+02, 3.4478e+02, 3.8753e+0
         2.0576e+01, 1.1006e+01, 2.9551e+00, 4.3278e+00, 2.9319e+00, 7.4019e-01,
         2.3594e+01, 15, 1.3175e-02, 4.2953e-02], device = dev, dtype = enc)
 #6.4881e+00 original Jadp
-'''
+
 
 dof = torch.as_tensor([
     
@@ -70,30 +159,36 @@ dof = torch.as_tensor([
 # getting 3 for .05
 
 
+####################################
 
-# MROOY THESIS AND FIRST PREPRINT	/!\ Wvs taken as the value of the second wep in the thesis. 
-################################# 
 
-Ae, Ap, As, Av = 169, 268, 709, 634
+# MRooy's thesis with apparent normalization error
 dof = torch.as_tensor([
     
     Ae, Ap, As, Av, # Ae, Ap, As, Av (4)
-    # wee, 	  wpe,     wse,     wes,     wvs,     wep,     wpp,     wsp,     wev,     wsv (10) :
-    .136*Ae, .101*Ap, .002*As, .077*Ae, .048*Av, .112*Ae, .093*Ap, .0*As, .041*Ae, .001*As, 
-    3.9, 4.5, 3.6, 2.9, 4.5, # Ie_ext, Ip_ext, Is_ext, Iv_ext, I_trans (5)
+    .137*Ae, .101*Ae, .002*Ae, .077*As, .048*As, .113*Ap, .093*Ap, .004*Ap, .042*Av, .001*Av, # wee, wpe, wse, wes, wvs, wep, wpp, wsp, wev, wsv (10)
+    3.9, 4.5, 3.6, 2.9, .45, # Ie_ext, Ip_ext, Is_ext, Iv_ext, I_trans (5)
     .056*Ae, .001, .15 # J_adp, sigma, frequency of ultra-slow stimuli ('usf' : float)[Hz] (3)
     
 ], device=dev, dtype=enc)
 
 
-############################################################################################################################################################
+#FROM THOMAS' "MODEL INFERENCE"
+
+Ae, Ap, As, Av = 172., 261., 757., 664. # According to pre-print [Rooy, 2018].
+dof = torch.as_tensor([
+    
+    Ae, Ap, As, Av, # Ae, Ap, As, Av (4)
+    .137*Ae, .101*Ae, .002*Ae, .077*As, .048*As, .113*Ap, .093*Ap, .004*Ap, .042*Av, .001*Av, # wee, wpe, wse, wes, wvs, wep, wpp, wsp, wev, wsv (10)
+    3.9/Ae, 4.5/Ap, 3.6/Av, 2.9/As, # Ie_ext, Ip_ext, Is_ext, Iv_ext (4)
+    1., .056*Ae, .005, 1/45. # I_trans, J_adp, sigma, frequency of ultra-slow stimuli ('usf' : float)[Hz] (3)
+    
+], device=dev, dtype=enc)
+'''
 
 
-info = True
-reject = True 
-plot = False 
-
-ccm = CCM(dof, mod_prm, sim_prm, info = True)
+'''
+ccm = CCM(dof, mod_prm = mod_prm, sim_prm = sim_prm, info = True)
 tsr, stim = ccm.simulate()
 #tsr = tsr.numpy() 
 
@@ -101,34 +196,4 @@ tsr, stim = ccm.simulate()
 eqs = ccm.equilibria()
 critic = torch.as_tensor(np.sort(eqs, 0)[1], device=dev, dtype=enc)
 res = ccm.postproc(tsr, eqs, critic, info, reject)
-
-tsr = tsr.numpy()
-
-if info:
-	print('\n Tested parameters: \n\n', dof,
-		  '\n\n Simulation window [s]: ', ccm.window, ' ; Time resolution [s]:', ccm.dt, ' ; Refractory period [dt]: ', ccm.tr,
-		  '\n\n Number of stimuli: ', len(stim), ' ; Data shape: ', tsr.shape,
-		  '\n\n Number of equilibria: ', len(eqs),
-		  '\n\n Equilibria: \n\n', np.sort(eqs, 0),
-		  '\n\n Summary statistics of simulated data: \n\n', res, '\n')
-
-
-
-
-
-
-print(np.shape(tsr))
-print('\n\n')
-print(np.shape(stim))
-#print(ccm.equilibria())
-
-fig, ax = plt.subplots()
-plt.plot(tsr[0,:], color = 'red', linewidth = 2)
-plt.show()
-
-
-
-
-# So now we'll have to find a mode "task" that replaces the poisson input by 
-# dirac (have to modify body of CCM) + modify parameters 
-# for now get summary stats ! 
+'''
