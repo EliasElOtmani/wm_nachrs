@@ -199,7 +199,7 @@ class CCM():
 		
 		self.simulations.append((Simulation(tsr, stim, sim_prm, self.mod_prm, self.dof, self.S, reject, info, plot)))
 
-		return tsr, stim
+		return self.simulations[-1]
 
 		# Shouldn't fr be constrained to positive values earlier in the code ? 
 

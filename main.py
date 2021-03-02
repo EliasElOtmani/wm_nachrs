@@ -1,3 +1,5 @@
+#	C:\Users\elias\Desktop\CogSci\Internship\Code
+
 import numpy as np
 from numpy import nan
 from scipy import optimize
@@ -6,6 +8,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from CCM import CCM
 from simpler_CCM import simpler_CCM
+from DMTS import DMTS
 
 # Convert tensor tens to np array : tens = tens.numpy()
 
@@ -19,7 +22,7 @@ dev = torch.device(computer)
 
 
 mod_prm = torch.as_tensor([.020, .600, .8, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7.], device=dev, dtype=enc)
-sim_prm = torch.as_tensor([15., .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
+sim_prm = torch.as_tensor([5., .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
 
 
 #########################################################################################################################################################
@@ -37,7 +40,7 @@ dof = torch.as_tensor([
     # wee, 	  wpe,     wse,     wes,     wvs,     wep,     wpp,     wsp,     wev,     wsv (10) :
     .136*Ae, .101*Ap, .002*As, .077*Ae, .048*Av, .112*Ae, .093*Ap, .0*As, .041*Ae, .001*As, 
     3.9, 4.5, 3.6, 2.9, 4.5, # Ie_ext, Ip_ext, Is_ext, Iv_ext, I_trans (5)
-    .058*Ae, .01, 1/45 # J_adp, sigma, frequency of ultra-slow stimuli ('usf' : float)[Hz] (3)
+    .0598*Ae, .01, 1/45 # J_adp, sigma, frequency of ultra-slow stimuli ('usf' : float)[Hz] (3)
     
 ], device=dev, dtype=enc)
 
@@ -53,13 +56,14 @@ reject = True
 plot = False 
 
 ccm = CCM(dof, mod_prm, sim_prm)
+'''
 ccm.simulate(dmts = True)
 sim = ccm.simulations[0]
 tsr, stim = sim.traces, sim.stimuli
 eqs = sim.S
-#res = sim.postproc()
+res = sim.postproc()
 tsr = tsr.numpy()
-'''
+
 if info:
 	print('\n Tested parameters: \n\n', dof,
 		  '\n\n Simulation window [s]: ', sim.window, ' ; Time resolution [s]:', sim.dt, ' ; Refractory period [dt]: ', sim.tr,
@@ -67,7 +71,9 @@ if info:
 		  '\n\n Number of equilibria: ', len(eqs),
 		  '\n\n Equilibria: \n\n', np.sort(eqs, 0),
 		  '\n\n Summary statistics of simulated data: \n\n', res, '\n')
-'''
+
+print('\n\n', np.sort(ccm.S, 0)[1])
+
 
 #print(ccm.equilibria())
 
@@ -75,7 +81,11 @@ if info:
 fig, ax = plt.subplots()
 plt.plot(tsr[0,:], color = 'red', linewidth = 2)
 plt.show()
+'''
 
+dmts = DMTS(ccm)
+dmts.print_stats()
+dmts.plot_trials()
 
 
 # So now we'll have to find a mode "task" that replaces the poisson input by 

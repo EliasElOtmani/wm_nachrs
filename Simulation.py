@@ -41,7 +41,9 @@ class Simulation():
 		self.smax = round(self.window / self.dt) # End of stimulation window [1](int).
 		self.N = self.smin + self.smax # Total number of time-points [1](int)
 
-		self.S = S #Solutions of the system
+		self.S = S #Solutions of the system 
+
+		self.usf = dof[21].item()
 
 		# Short-hand indices for tensor-based data storage [1](int)
 		self.RE, self.RP, self.RS, self.RV, self.dRE, self.dRP, self.dRS, self.dRV, self.TT = 0, 1, 2, 3, 4, 5, 6, 7, 8
@@ -71,6 +73,10 @@ class Simulation():
 			tsr = torch.Tensor(size=(9, _), device=dev, dtype=enc) : data tensor storing time-evolutions of neural populations' rates and their derivatives.
 			
 		""" 
+
+		# 4dim vector corresponding to fr values of neural populations for critical point
+		critic = torch.as_tensor(np.sort(self.S, 0)[1], device=self.dev, dtype=self.enc)
+
 		def med(t):
 			if torch.numel(t) == 0:
 				return 0.
@@ -82,16 +88,17 @@ class Simulation():
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 
 		# Sorting neural activities wrt to H/L states.
-		tsr_ = self.traces.narrow(1, self.smin, self.smax)
+		###############################################
+
+		tsr_ = self.traces.narrow(1, self.smin, self.smax)	# We get rid of neural traces outside our simulation window's scope
+		# CAREFUL the vector actually goes from smin to smin+smax
 		
-		# TRY AND UNDERSTAND THIS PART
-		mask_he = torch.gt(tsr_[self.RE,:], critic[0].item())
+		mask_he = torch.gt(tsr_[self.RE,:], critic[0].item())	# Ouputs a boolean vector corresponding to each PYR fr value being above (True) or below (False) critical point 
 		mhe = med(tsr_[self.RE][mask_he])
 		md_he = (torch.sum(mask_he, dtype=self.enc).item() * self.dt) / (self.window*self.usf)
 		
 		if self.reject and np.isclose(md_he, 0., atol=self.atol, rtol=self.rtol):
-			if self.info == True:
-				print('\n Simulated dynamics never reached high activity state.')
+			if self.info : print('\n Simulated dynamics never reached high activity state.')
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 		
 		mask_le = torch.le(tsr_[self.RE,:], critic[0].item())
@@ -102,7 +109,6 @@ class Simulation():
 			if self.info: print('\n Simulated dynamics never reached low activity state.')
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 
-		
 		mask_hp, mask_hs, mask_hv = torch.gt(tsr_[self.RP,:], critic[1].item()), torch.gt(tsr_[self.RS,:], critic[2].item()), torch.gt(tsr_[self.RV,:], critic[3].item())
 		mhp, mhs, mhv = med(tsr_[self.RP][mask_hp]), med(tsr_[self.RS][mask_hs]), med(tsr_[self.RV][mask_hv])
 
@@ -126,3 +132,6 @@ class Simulation():
    
 		# Summary statistics of simulated data 		# MISSING MODE H state duration 1.5s
 		return torch.as_tensor([me, mp, ms, mv, mle, mlp, mls, mlv, mhe, mhp, mhs, mhv, md_le, md_he], device=self.dev, dtype=self.enc)
+
+	def plot(self):
+		pass
