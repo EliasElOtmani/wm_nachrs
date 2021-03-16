@@ -26,10 +26,12 @@ class CCM():
 
 	### FIXED MODEL PARAMETERS
 		
-		self.tau, self.tau_adp, self.q = mod_prm[0].item(), mod_prm[1].item(), mod_prm[2].item() # Circuit and adaptation time constants [s](float) ; Amount of divisive inhibition [1](float).
+		self.tau, self.tau_adp = mod_prm[0].item(), mod_prm[1].item()	 # Circuit and adaptation time constants [s](float) ; Amount of divisive inhibition [1](float).
+		self.I_trans = mod_prm[2].item()
 		self.gaba = 1. + mod_prm[3].item() # Conductance of GABAergic projections [1](float).
 		self.a_e, self.a_p, self.a_s, self.a_v = mod_prm[4].item(), mod_prm[5].item(), mod_prm[6].item(), mod_prm[7].item() # Maximal slopes of populational response functions [1](float).
 		self.b_e, self.b_p, self.b_s, self.b_v = mod_prm[8].item(), mod_prm[9].item(), mod_prm[10].item(), mod_prm[11].item() # Critical thresholds of populational response functions [1](float).
+		self.usf = mod_prm[12] # Frequency of ultra-slow fluctuations 
 		
 		
 	### FREE MODEL PARAMETERS (DEGREES OF FREEDOM)
@@ -43,21 +45,18 @@ class CCM():
 		self.wes, self.wvs = dof[7].item() / self.Ae, dof[8].item() / self.Av 
 		self.wep, self.wpp, self.wvp, self.wsp = dof[9].item() / self.Ae, self.gaba * dof[10].item() / self.Ap, .5*self.wvs, self.gaba * dof[11].item() / self.As
 		self.wev, self.wsv = dof[12].item() / self.Ae, self.gaba * dof[13].item() / self.As
-		
-		'''
-		# WITH apparent error on normalization
-		self.wee, self.wpe, self.wse = dof[4].item() / self.Ae, self.gaba * dof[5].item() / self.Ae, self.gaba * dof[6].item() / self.Ae 
-		self.wes, self.wvs = dof[7].item() / self.As, dof[8].item() / self.As 
-		self.wep, self.wpp, self.wvp, self.wsp = dof[9].item() / self.Ap, self.gaba * dof[10].item() /self.Ap, .5*(self.Ap/self.As)*self.wvs, self.gaba * dof[11].item() / self.Ap
-		self.wev, self.wsv = dof[12].item() / self.Av, self.gaba * dof[13].item() / self.Av
-		'''
 
 		
 		# External currents [1](float).
 		self.Ie_ext, self.Ip_ext, self.Is_ext, self.Iv_ext = dof[14].item(), dof[15].item(), dof[16].item(), dof[17].item()
 		
 		# Bistable dynamics parameters.
-		self.I_trans, self.J_adp, self.sigma, self.usf = dof[18].item(), dof[19].item() / self.Ae, dof[20].item(), dof[21].item()
+		self.q, self.J_adp, self.sigma = dof[18].item(), dof[19].item() / self.Ae, dof[20].item()
+
+		# /!\ WARNING # 
+		# Originally dof[21] is usf. We decide to make it fixed (included as mod_prm[12]) and shorten dof to length of 21. 
+		# Also, we fix I_trans (originally dof[18] as mod_prm[13]. Instead, 
+		# we define q as a free parameter (originally defined above as mod[2])
 
 
 	### MODEL
@@ -140,7 +139,7 @@ class CCM():
 		#s = self.poisson.sample().item() + smin 	# WHAT'S THIS USEFUL FOR ? No effect of removing it...
 		stim = []
 	
-		for k in tqdm(range(N)):
+		for k in range(N):
 			
 			trans = 0.
 			if not dmts:
@@ -262,7 +261,7 @@ class CCM():
 			return [dre, drp, drs, drv]
 		
 		S = [np.random.uniform(size=4)]
-		for k in tqdm(range(400)):
+		for k in range(400):
 			x0 = [400*np.random.uniform(size=4) - 200]
 			sol = optimize.root(F, x0, method='hybr')
 			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():

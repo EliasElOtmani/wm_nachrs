@@ -28,7 +28,7 @@ dt = 0.01
 
 class DMTS():
 
-	def __init__(self, ccm, task_prm = default_task_prm, sim_prm = None):
+	def __init__(self, ccm, task_prm = default_task_prm, sim_prm = None, reject = False):
 		
 		computer = 'cpu'
 		self.enc = torch.float64
@@ -45,7 +45,9 @@ class DMTS():
 
 		self.trials = []
 
-		self.critic = torch.as_tensor(np.sort(ccm.S, 0)[1], device=self.dev, dtype=self.enc)
+		try : self.critic = torch.as_tensor(np.sort(ccm.S, 0)[-2], device=self.dev, dtype=self.enc)
+		except : 
+			self.critic = torch.as_tensor([0], device = self.dev, dtype = self.enc) # Maybe add an equivalent of info
 		critic_re = self.critic[0].item()
 
 		# Successful operations : 
@@ -55,7 +57,7 @@ class DMTS():
 
 		for trial in range(self.nb_trials):
 			
-			sim = ccm.simulate(sim_prm, dmts = True, cue_timings = [self.t_stim])
+			sim = ccm.simulate(sim_prm, dmts = True, cue_timings = [self.t_stim], reject = reject)
 			
 			load_fr = sim.traces[0].narrow(0, int(self.load_interval[0]/dt), int((self.load_interval[1] - self.load_interval[0])/dt))
 			delay_fr = sim.traces[0].narrow(0, int(self.delay_interval[0]/dt), int((self.delay_interval[1] - self.delay_interval[0])/dt))
@@ -65,11 +67,6 @@ class DMTS():
 			if torch.gt(delay_fr, critic_re).all() : self.maintenances += 1
 			if torch.gt(clear_fr, critic_re).all() : self.clearances += 1
 
-			if trial == 0:
-				print(torch.gt(load_fr, critic_re))
-				print(torch.gt(delay_fr, critic_re))
-				print(torch.gt(clear_fr, critic_re))
-
 			self.trials.append(sim)
 
 	def print_stats(self):
@@ -77,13 +74,25 @@ class DMTS():
 			'\nSuccessful operations :\t', self.loadings, '\t', self.maintenances, '\t', self.clearances,
 			'\nRatios :\t\t', self.loadings/self.nb_trials, '\t', self.maintenances/self.nb_trials, '\t', self.clearances/self.nb_trials)
 
-	def plot_trials(self, trial_indexes = [0]):	
+	def plot_trials(self, trial_indexes = 0):	## FIX THE TRIAL INDEXES	
+
 		fig, ax = plt.subplots()
-		ax.plot(self.trials[0].traces[0])
-		ax.vlines(x = [int(i/dt) for i in self.load_interval], ymin  = 0, ymax = 80, color = 'r') 
-		ax.vlines(x = [int(i/dt) for i in self.delay_interval], ymin  = 0, ymax = 80, color = 'b') 
-		ax.vlines(x = [int(i/dt) for i in self.clear_interval], ymin  = 0, ymax = 80, color = 'g') 
+		ax.plot(self.trials[trial_indexes].traces[0], color = 'r')
+		#ax.vlines(x = [int(i/dt) for i in self.load_interval], ymin  = 0, ymax = 80, color = 'o') 
+		#ax.vlines(x = [int(i/dt) for i in self.delay_interval], ymin  = 0, ymax = 80, color = 'b') 
+		#ax.vlines(x = [int(i/dt) for i in self.clear_interval], ymin  = 0, ymax = 80, color = 'g') 
 		ax.hlines(y = self.critic[0].item(), xmin = 0, xmax = len(self.trials[0].traces[0]), linestyle = 'dashed')
+		ax.axvspan(self.t_stim/dt, self.load_interval[1]/dt, facecolor = 'orange', alpha = 0.2)
+		ax.axvspan(self.load_interval[1]/dt, self.delay_interval[1]/dt, facecolor = 'b', alpha = 0.2)
+		ax.axvspan(self.delay_interval[1]/dt, self.clear_interval[1]/dt, facecolor = 'g', alpha = 0.2)
+		ax.set_xlim(left = int(self.t_stim/dt/2), right = int(self.clear_interval[1]/dt + self.t_stim/dt/2))
+		ax.set_ylim(top = 90)
+		ax.text(self.t_stim/dt +10, 85, "Load", fontsize=13)
+		ax.text(self.load_interval[1]/dt +10, 85, "Delay", fontsize=13)
+		ax.text(self.delay_interval[1]/dt +10, 85, "Clear", fontsize=13)
+
+		# Make the title bigger
+		ax.set(title = 'DMTS : example trial', xlabel = 'Time (ms)', ylabel = 'PYR firing rate (Hz)')
 		plt.show()
 
 

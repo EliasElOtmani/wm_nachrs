@@ -21,8 +21,9 @@ enc = torch.float64
 dev = torch.device(computer)
 
 
-mod_prm = torch.as_tensor([.020, .600, .8, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7.], device=dev, dtype=enc)
-sim_prm = torch.as_tensor([5., .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
+#mod_prm = torch.as_tensor([.020, .600, .8, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7.], device=dev, dtype=enc)
+mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45], device=dev, dtype=enc)
+sim_prm = torch.as_tensor([200, .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
 
 
 #########################################################################################################################################################
@@ -47,6 +48,15 @@ dof = torch.as_tensor([
 # Modifications : I_trans (.45 initially), usf (.15 initially), sigma (.001 initially)
 #NB : For I_tran, the threshold seems to be between 2 and 3 (2 not enough to elicit oscillations)
 
+dof = torch.as_tensor([
+    
+    Ae, Ap, As, Av, # Ae, Ap, As, Av (4)
+    # wee, 	  wpe,     wse,     wes,     wvs,     wep,     wpp,     wsp,     wev,     wsv (10) :
+    .136*Ae, .101*Ap, .002*As, .077*Ae, .048*Av, .112*Ae, .093*Ap, .0*As, .041*Ae, .001*As, 
+    3.9, 4.5, 3.6, 2.9, # Ie_ext, Ip_ext, Is_ext, Iv_ext (5)
+    0.8, .058*Ae, .01 # q, J_adp, sigma (3)
+    
+], device=dev, dtype=enc)
 
 ############################################################################################################################################################
 
@@ -56,8 +66,10 @@ reject = True
 plot = False 
 
 ccm = CCM(dof, mod_prm, sim_prm)
-'''
-ccm.simulate(dmts = True)
+
+
+
+ccm.simulate(dmts = False)
 sim = ccm.simulations[0]
 tsr, stim = sim.traces, sim.stimuli
 eqs = sim.S
@@ -81,16 +93,12 @@ print('\n\n', np.sort(ccm.S, 0)[1])
 fig, ax = plt.subplots()
 plt.plot(tsr[0,:], color = 'red', linewidth = 2)
 plt.show()
-'''
 
+'''
 dmts = DMTS(ccm)
 dmts.print_stats()
 dmts.plot_trials()
-
-
-# So now we'll have to find a mode "task" that replaces the poisson input by 
-# dirac (have to modify body of CCM) + modify parameters 
-# for now get summary stats ! 
+'''
 
 
 

@@ -2,17 +2,17 @@ import numpy as np
 from numpy import nan
 from scipy import optimize
 import os, sys, time, torch
-from tqdm import tqdm
 
-# A simulation has 
 
 class Simulation():
 
-	def __init__(self, traces, stimuli, sim_prm, mod_prm, dof, S, reject=True, info=False, plot=False, dmts = False):
+	def __init__(self, traces, stimuli, sim_prm, mod_prm, dof, S, reject=True, info=False, plot=False, dmts = False, aborted = False):
 
 		computer = "cpu"
 		self.enc = torch.float64
 		self.dev = torch.device(computer)
+
+		self.aborted = aborted
 
 		# Model parameters we're interested in
 		self.tau, self.tau_adp = mod_prm[0].item(), mod_prm[1].item()
@@ -43,8 +43,8 @@ class Simulation():
 
 		self.S = S #Solutions of the system 
 
-		self.usf = dof[21].item()
-
+		#self.usf = dof[21].item()
+		self.usf = mod_prm[12].item()
 		# Short-hand indices for tensor-based data storage [1](int)
 		self.RE, self.RP, self.RS, self.RV, self.dRE, self.dRP, self.dRS, self.dRV, self.TT = 0, 1, 2, 3, 4, 5, 6, 7, 8
 		self.INE_E, self.INE_P, self.INE_S, self.INE_V, self.INS_E, self.INS_P, self.INS_S, self.INS_V = 9, 10, 11, 12, 13, 14, 15, 16
@@ -74,18 +74,18 @@ class Simulation():
 			
 		""" 
 
-		# 4dim vector corresponding to fr values of neural populations for critical point
-		critic = torch.as_tensor(np.sort(self.S, 0)[1], device=self.dev, dtype=self.enc)
-
 		def med(t):
 			if torch.numel(t) == 0:
 				return 0.
 			else:
 				return torch.median(t).item()
 		
-		if self.reject and len(self.S)<3:
+		if self.aborted or (self.reject and len(self.S)<3):
 			if self.info : print("Model not bistable")
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
+
+		# 4dim vector corresponding to fr values of neural populations for critical point
+		critic = torch.as_tensor(np.sort(self.S, 0)[1], device=self.dev, dtype=self.enc)
 
 		# Sorting neural activities wrt to H/L states.
 		###############################################
