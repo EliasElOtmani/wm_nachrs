@@ -11,11 +11,10 @@ from Simulation import Simulation
 
 class CCM():
 
-	def __init__(self, dof, mod_prm, sim_prm = None):
+	def __init__(self, dof, mod_prm, sim_prm = None, refractory_period = True, equilibria = False, computer = "cpu", enc = torch.float64):
 
 		# TEMPORARY, find a way to better deal with this
-		computer = "cpu"
-		self.enc = torch.float64
+		self.enc = enc
 		self.dev = torch.device(computer)
 
 		self.sim_prm = sim_prm
@@ -32,6 +31,7 @@ class CCM():
 		self.a_e, self.a_p, self.a_s, self.a_v = mod_prm[4].item(), mod_prm[5].item(), mod_prm[6].item(), mod_prm[7].item() # Maximal slopes of populational response functions [1](float).
 		self.b_e, self.b_p, self.b_s, self.b_v = mod_prm[8].item(), mod_prm[9].item(), mod_prm[10].item(), mod_prm[11].item() # Critical thresholds of populational response functions [1](float).
 		self.usf = mod_prm[12] # Frequency of ultra-slow fluctuations 
+		self.tr = mod_prm[13].item() # Refractory time [in unit 'dt'](float).
 		
 		
 	### FREE MODEL PARAMETERS (DEGREES OF FREEDOM)
@@ -73,7 +73,9 @@ class CCM():
 
 
 	# Compute equilibria as soon as instantiated : 
-		self.S = self.equilibria()
+		self.hidden_eq = False # Hidden equilibria, supra-saturation dynamics
+		if equilibria : self.S = self.equilibria()
+		else : self.S = None
 
 
 	# Populational response functions, as derived from [Papasavvas, 2015].   MAYBE DEFINE THEM IN THE __INIT__() ? OR IN THE SIMULATION (easier if we want to be able to create the simpler_CCM from the same class) ?  
@@ -108,6 +110,11 @@ class CCM():
 			
 		"""
 
+		if self.reject and equilibria and len(self.S)<3:
+			if self.info : print("Model not bistable")
+			traces = None
+			return Simulation(traces, stimuli, sim_prm, mod_prm, dof, S, reject, info, plot, empty = True)
+
 	### SIMULATION PARAMETERS
 		if sim_prm == None : sim_prm = self.sim_prm
 		if sim_prm == None : 
@@ -116,13 +123,12 @@ class CCM():
 		
 		window = sim_prm[0].item() # Stimulation window [s](float).
 		dt = sim_prm[1].item() # Time resolution [s](float).
-		self.tr = sim_prm[2].item() # Refractory time [in unit 'dt'](float).		# FIX THAT #
-		atol, rtol = sim_prm[3].item(), sim_prm[4].item() # Absolute and relative tolerances for float comparison.
+		atol, rtol = sim_prm[2].item(), sim_prm[3].item() # Absolute and relative tolerances for float comparison.
 		
-		if torch.isnan(sim_prm[5]):
+		if torch.isnan(sim_prm[4]):
 			torch.manual_seed(time.time())
 		else:
-			torch.manual_seed(sim_prm[5])
+			torch.manual_seed(sim_prm[4])
 		
 		smin = round(3 * max(self.tau, self.tau_adp) / dt) # Starting time for stimulation window [1](int).
 		smax = round(window / dt) # End of stimulation window [1](int).
@@ -186,6 +192,8 @@ class CCM():
 			
 			t = k * dt # Time [s](float).
 			tsr[self.TT, k] = t
+
+			re, rp, rs, rv = max(re, 0.), max(rp, 0.), max(rs, 0.), max(rv, 0.)
 			
 			if plot:
 				tsr[self.RE, k], tsr[self.dRE, k], tsr[self.INE_E, k], tsr[self.INS_E, k], tsr[self.IND_E, k], tsr[self.IE_ADP, k] = max(re, 0.), dre, ine_e, ins_e, ind_e, Ie_adp
@@ -205,6 +213,8 @@ class CCM():
 
 	def equilibria(self):
 		## TRY and modify atol & rtol or smt to get rid of the 4 equilibria when there're only 3... 
+		# UPDATE : the temporary model we're using actually has 4 equilibria. They are all systematically found 
+		# when increasing the number of random [re, rp, rv, rs] samples at the bottom of the function...
 
 		"""
 		
@@ -264,7 +274,20 @@ class CCM():
 		for k in range(400):
 			x0 = [400*np.random.uniform(size=4) - 200]
 			sol = optimize.root(F, x0, method='hybr')
+			#sol = optimize.fsolve(F, x0)
 			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():
 				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all():
 					S.append(sol.x)
-		return S
+
+		S = S[1:]
+
+		# ATTEMPTING TO CUT SATURATED EQUILIBRIA OFF, gotta go back to this
+		'''
+		for s in S:
+			if not np.array([fr < .45 for fr in [s[0] / self.Ae, s[1] / self.Ap, s[2] / self.As, s[3] /self.Av]]).all() :
+				# S.remove(s)	HERE bug : the truth value of an array with more than one element is ambiguous
+				print('smt')
+				self.hidden_eq = True
+		'''
+
+		return np.sort(S, 0)

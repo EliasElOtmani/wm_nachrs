@@ -22,9 +22,8 @@ dev = torch.device(computer)
 
 
 #mod_prm = torch.as_tensor([.020, .600, .8, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7.], device=dev, dtype=enc)
-mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45], device=dev, dtype=enc)
-sim_prm = torch.as_tensor([200, .01, 1., 1e-12, 1e-3, nan], device=dev, dtype=enc)
-
+mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45, 0.005], device=dev, dtype=enc)		# refractory period : from 0.0025 to 0.01
+sim_prm = torch.as_tensor([200, .01, 1., 1e-12, 1e-3], device=dev, dtype=enc)
 
 #########################################################################################################################################################
 # FREE PARAMETERS #
@@ -54,9 +53,62 @@ dof = torch.as_tensor([
     # wee, 	  wpe,     wse,     wes,     wvs,     wep,     wpp,     wsp,     wev,     wsv (10) :
     .136*Ae, .101*Ap, .002*As, .077*Ae, .048*Av, .112*Ae, .093*Ap, .0*As, .041*Ae, .001*As, 
     3.9, 4.5, 3.6, 2.9, # Ie_ext, Ip_ext, Is_ext, Iv_ext (5)
-    0.8, .058*Ae, .01 # q, J_adp, sigma (3)
+    0.8, .058*Ae, .02 # q, J_adp, sigma (3)
     
 ], device=dev, dtype=enc)
+
+
+# PROJECTIONS SELF-COHERENCY
+# wpe	# wpp	
+.101*Ap, .093*Ap 	# Fair enough, but wpv = 0.2*wpp, take into account ? 
+
+# wse 	# wsp 	# wsv 
+.002*As, .0*As, .001*As   #Also, Wsv normally = 1.3*Wse. 
+#Wsp not insignificant either, > 0.5*Wse
+
+# wvs 	# wvp 	
+.048*Av, .042*Av 	# Fair enough but normally Wvp = 0.25*Wvs. Maybe explains invariance of PV neurons ! 
+
+# Wee 	# Wep 	# Wes 	# Wev
+.136,  	.112,	.077, 	.041 # (*Ae)
+# Perfect projections to INs :D but Wee way too high. Wee 50 times weaker than Wep normally.
+# This might explain apparent lower contribution PYR-INs as compared to INs-INs. 
+# Also, probably bias induced by necessity to have the oscillations fully sustained in L23, 
+# maybe external input necessary. Gotta go back to litterature on UP states. 
+
+# EXTRINSIC COHERENCY 
+
+# wpe    #wse
+27,		 17 	# Fair enough
+
+# Wpp 	Wsp		Wvp 	Wep
+25,		0, 		15,		19   
+# Wsp should be 0.25*Wpp even when considering pop size... Wvp way too high (should be < Wsp)
+# Wep fair enough but not when we take into account pop size... (should be way bigger)
+
+# Wvs 	Wps 	Wes 
+8,		None 	13
+# Perfect for INs. 
+# Wes should be 4*Wvs though, way too low here
+
+# Wpv 	Wsv 	Wvv 	Wev 
+None 	0.85 	None 	6.8 
+# Wpv shouldn't be neglected as stated above 
+# Wvv can safely be so it's fine. 
+# Wev too high now when not taking into account pop (INC e-v = 0.5 s-v)
+# still too low when considering pop size --> WEV TOO LOW FOR SURE
+
+
+# CONCLUSION : 
+# Wee too high, all other Wex too low
+# Wsv should be >= Wse
+# Wsp should be considered, > 0.5* Wse
+# Wpv might be considered, 0.2*Wpp
+
+
+
+
+
 
 ############################################################################################################################################################
 

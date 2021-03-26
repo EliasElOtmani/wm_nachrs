@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import numpy as np
 from numpy import nan
 from scipy import optimize
@@ -72,12 +74,14 @@ class DMTS():
 	def print_stats(self):
 		print('Number of trials :\t', self.nb_trials,
 			'\nSuccessful operations :\t', self.loadings, '\t', self.maintenances, '\t', self.clearances,
-			'\nRatios :\t\t', self.loadings/self.nb_trials, '\t', self.maintenances/self.nb_trials, '\t', self.clearances/self.nb_trials)
+			'\nRatios :\t\t', round(self.loadings/self.nb_trials, 2), '\t', round(self.maintenances/self.nb_trials, 2), '\t', round(self.clearances/self.nb_trials, 2))
 
 	def plot_trials(self, trial_indexes = 0):	## FIX THE TRIAL INDEXES	
 
+		dt = 0.001
+
 		fig, ax = plt.subplots()
-		ax.plot(self.trials[trial_indexes].traces[0], color = 'r')
+		ax.plot([10*i for i in range(len(self.trials[trial_indexes].traces[0]))], self.trials[trial_indexes].traces[0], color = 'r')
 		#ax.vlines(x = [int(i/dt) for i in self.load_interval], ymin  = 0, ymax = 80, color = 'o') 
 		#ax.vlines(x = [int(i/dt) for i in self.delay_interval], ymin  = 0, ymax = 80, color = 'b') 
 		#ax.vlines(x = [int(i/dt) for i in self.clear_interval], ymin  = 0, ymax = 80, color = 'g') 

@@ -6,36 +6,38 @@ import os, sys, time, torch
 
 class Simulation():
 
-	def __init__(self, traces, stimuli, sim_prm, mod_prm, dof, S, reject=True, info=False, plot=False, dmts = False, aborted = False):
+	def __init__(self, traces, stimuli, sim_prm, mod_prm, dof, S, reject=True, info=False, plot=False, dmts = False, aborted = False, equilibria = False):
 
 		computer = "cpu"
 		self.enc = torch.float64
 		self.dev = torch.device(computer)
 
 		self.aborted = aborted
+		self.equilibria = equilibria
+
+		### SIMULATION PARAMETERS
+		
+		self.window = sim_prm[0].item() # Stimulation window [s](float).
+		self.dt = sim_prm[1].item() # Time resolution [s](float).		
+		self.atol, self.rtol = sim_prm[2].item(), sim_prm[3].item() # Absolute and relative tolerances for float comparison.
+		self.plot = plot
+		self.info = info
+		self.reject = reject
 
 		# Model parameters we're interested in
 		self.tau, self.tau_adp = mod_prm[0].item(), mod_prm[1].item()
+		self.tr = sim_prm[13].item() # Refractory time [in unit 'dt'](float).
 		self.Ae, self.Ap, self.As, self.Av = dof[0].item(), dof[1].item(), dof[2].item(), dof[3].item()
 
 		self.traces = traces
 		self.stimuli = stimuli
 		self.sim_prm = sim_prm
 
-		### SIMULATION PARAMETERS
 		
-		self.window = sim_prm[0].item() # Stimulation window [s](float).
-		self.dt = sim_prm[1].item() # Time resolution [s](float).
-		self.tr = sim_prm[2].item() # Refractory time [in unit 'dt'](float).		# FIX THAT #
-		self.atol, self.rtol = sim_prm[3].item(), sim_prm[4].item() # Absolute and relative tolerances for float comparison.
-		self.plot = plot
-		self.info = info
-		self.reject = reject
-		
-		if torch.isnan(sim_prm[5]):
+		if torch.isnan(sim_prm[4]):
 			torch.manual_seed(time.time())
 		else:
-			torch.manual_seed(sim_prm[5])
+			torch.manual_seed(sim_prm[4])
 
 		self.smin = round(3 * max(self.tau, self.tau_adp) / self.dt) # Starting time for stimulation window [1](int).
 		self.smax = round(self.window / self.dt) # End of stimulation window [1](int).
@@ -45,6 +47,7 @@ class Simulation():
 
 		#self.usf = dof[21].item()
 		self.usf = mod_prm[12].item()
+
 		# Short-hand indices for tensor-based data storage [1](int)
 		self.RE, self.RP, self.RS, self.RV, self.dRE, self.dRP, self.dRS, self.dRV, self.TT = 0, 1, 2, 3, 4, 5, 6, 7, 8
 		self.INE_E, self.INE_P, self.INE_S, self.INE_V, self.INS_E, self.INS_P, self.INS_S, self.INS_V = 9, 10, 11, 12, 13, 14, 15, 16
@@ -80,12 +83,13 @@ class Simulation():
 			else:
 				return torch.median(t).item()
 		
-		if self.aborted or (self.reject and len(self.S)<3):
+		if self.aborted or (self.reject and self.S != None and len(self.S)<3):
 			if self.info : print("Model not bistable")
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 
-		# 4dim vector corresponding to fr values of neural populations for critical point
-		critic = torch.as_tensor(np.sort(self.S, 0)[1], device=self.dev, dtype=self.enc)
+		# 4dim vector corresponding to fr values of neural populations for critical point, if model bistable (else set to 10)
+		if self.equilbria and len(self.S) == 3 : critic = self.S[1]
+		else : critic = torch.as_tensor([10,10,10,10], device = self.dev, dtype = self.enc) 
 
 		# Sorting neural activities wrt to H/L states.
 		###############################################
