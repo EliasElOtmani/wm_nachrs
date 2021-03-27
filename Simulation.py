@@ -16,6 +16,7 @@ class Simulation():
 
 		# Model parameters we're interested in
 		self.tau, self.tau_adp = mod_prm[0].item(), mod_prm[1].item()
+		self.tr = mod_prm[13].item() # Refractory time [in unit 'dt'](float).
 		self.Ae, self.Ap, self.As, self.Av = dof[0].item(), dof[1].item(), dof[2].item(), dof[3].item()
 
 		self.traces = traces
@@ -26,7 +27,6 @@ class Simulation():
 		
 		self.window = sim_prm[0].item() # Stimulation window [s](float).
 		self.dt = sim_prm[1].item() # Time resolution [s](float).
-		self.tr = sim_prm[2].item() # Refractory time [in unit 'dt'](float).		# FIX THAT #
 		self.atol, self.rtol = sim_prm[3].item(), sim_prm[4].item() # Absolute and relative tolerances for float comparison.
 		self.plot = plot
 		self.info = info
@@ -80,6 +80,7 @@ class Simulation():
 			else:
 				return torch.median(t).item()
 		
+
 		if self.aborted or (self.reject and len(self.S)<3):
 			if self.info : print("Model not bistable")
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)

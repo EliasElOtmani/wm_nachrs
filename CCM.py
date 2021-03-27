@@ -3,19 +3,19 @@ from numpy import nan
 from scipy import optimize
 import os, sys, time, torch
 from tqdm import tqdm
+from NeuralPop import NeuralPop
 from Simulation import Simulation
 
 # An "instance" of CCM stands for one cortical column with defined parameters. 
 # Once declared at the instanciation, the latter only change if explicitly modified (functions ...(), ...())
 # Conversely, simulation parameters are easily redeclared for each simulation. 
 
+
 class CCM():
 
-	def __init__(self, dof, mod_prm, sim_prm = None):
+	def __init__(self, dof, mod_prm, sim_prm = None, equilibria = False, computer = "cpu", enc = torch.float64):
 
 		# TEMPORARY, find a way to better deal with this
-		computer = "cpu"
-		self.enc = torch.float64
 		self.dev = torch.device(computer)
 
 		self.sim_prm = sim_prm
@@ -24,39 +24,59 @@ class CCM():
 
 		self.simulations = []
 
-	### FIXED MODEL PARAMETERS
+		### FIXED MODEL PARAMETERS
 		
-		self.tau, self.tau_adp = mod_prm[0].item(), mod_prm[1].item()	 # Circuit and adaptation time constants [s](float) ; Amount of divisive inhibition [1](float).
+		tau_m, tau_adp = mod_prm[0].item(), mod_prm[1].item()	 # Circuit and adaptation time constants [s](float) ; Amount of divisive inhibition [1](float).
 		self.I_trans = mod_prm[2].item()
-		self.gaba = 1. + mod_prm[3].item() # Conductance of GABAergic projections [1](float).
-		self.a_e, self.a_p, self.a_s, self.a_v = mod_prm[4].item(), mod_prm[5].item(), mod_prm[6].item(), mod_prm[7].item() # Maximal slopes of populational response functions [1](float).
-		self.b_e, self.b_p, self.b_s, self.b_v = mod_prm[8].item(), mod_prm[9].item(), mod_prm[10].item(), mod_prm[11].item() # Critical thresholds of populational response functions [1](float).
+		gaba = 1. + mod_prm[3].item() # Conductance of GABAergic projections [1](float).
+		a_e, a_p, a_s, a_v = mod_prm[4].item(), mod_prm[5].item(), mod_prm[6].item(), mod_prm[7].item() # Maximal slopes of populational response functions [1](float).
+		b_e, b_p, b_s, b_v = mod_prm[8].item(), mod_prm[9].item(), mod_prm[10].item(), mod_prm[11].item() # Critical thresholds of populational response functions [1](float).
 		self.usf = mod_prm[12] # Frequency of ultra-slow fluctuations 
-		
+		Tref = mod_prm[13]
+
+		# External currents [1](float).
+		Ie_ext, Ip_ext, Is_ext, Iv_ext = dof[14].item(), dof[15].item(), dof[16].item(), dof[17].item()		
 		
 	### FREE MODEL PARAMETERS (DEGREES OF FREEDOM)
 		
 		# Scaling factors [spikes/min](float).
-		self.Ae, self.Ap, self.As, self.Av = dof[0].item(), dof[1].item(), dof[2].item(), dof[3].item()
-
+		Ae, Ap, As, Av = dof[0].item(), dof[1].item(), dof[2].item(), dof[3].item()
 
 		# Normalized synaptic weights [1 -> min/spikes](float).
-		self.wee, self.wpe, self.wse = dof[4].item() / self.Ae, self.gaba * dof[5].item() / self.Ap, self.gaba * dof[6].item() / self.As 
-		self.wes, self.wvs = dof[7].item() / self.Ae, dof[8].item() / self.Av 
-		self.wep, self.wpp, self.wvp, self.wsp = dof[9].item() / self.Ae, self.gaba * dof[10].item() / self.Ap, .5*self.wvs, self.gaba * dof[11].item() / self.As
-		self.wev, self.wsv = dof[12].item() / self.Ae, self.gaba * dof[13].item() / self.As
+		wee, wpe, wse = dof[4].item() / Ae, gaba * dof[5].item() / Ap, gaba * dof[6].item() / As 		## MAYBE we should normalize the weights in the Synapse() class ? (has access to presynaptic amplitude)
+		wes, wvs = dof[7].item() / Ae, dof[8].item() / Av 
+		wep, wpp, wvp, wsp = dof[9].item() / Ae, gaba * dof[10].item() / Ap, .5*wvs, gaba * dof[11].item() / As
+		wev, wsv = dof[12].item() / Ae, gaba * dof[13].item() / As
 
-		
-		# External currents [1](float).
-		self.Ie_ext, self.Ip_ext, self.Is_ext, self.Iv_ext = dof[14].item(), dof[15].item(), dof[16].item(), dof[17].item()
-		
 		# Bistable dynamics parameters.
-		self.q, self.J_adp, self.sigma = dof[18].item(), dof[19].item() / self.Ae, dof[20].item()
+		q, J_adp, sigma = dof[18].item(), dof[19].item() / Ae, dof[20].item()
 
-		# /!\ WARNING # 
+			# /!\ WARNING # 
 		# Originally dof[21] is usf. We decide to make it fixed (included as mod_prm[12]) and shorten dof to length of 21. 
 		# Also, we fix I_trans (originally dof[18] as mod_prm[13]. Instead, 
 		# we define q as a free parameter (originally defined above as mod[2])
+
+		## GOTTA ADD THE "SELF" 
+
+		self.pyr = NeuralPop('pyr', Ae, sigma, tau_m, tau_adp, a_e, b_e, Ie_ext, NT = 'glutamate', Tref = Tref, J_adp = J_adp)
+		self.pv  = NeuralPop('pv',  Ap, sigma, tau_m, tau_adp, a_p, b_p, Ip_ext, NT = 'gaba', Tref = Tref)
+		self.som = NeuralPop('som', As, sigma, tau_m, tau_adp, a_s, b_s, Is_ext, NT = 'gaba', Tref = Tref)
+		self.vip = NeuralPop('vip', Av, sigma, tau_m, tau_adp, a_v, b_v, Iv_ext, NT = 'gaba', Tref = Tref)
+
+		self.pyr.synapse(self.pyr, wee, printt = True)
+		self.pyr.synapse(self.pv, wpe, q)
+		self.pyr.synapse(self.som, wse)
+
+		self.som.synapse(self.pyr, wes)
+		self.som.synapse(self.vip, wvs)
+
+		self.pv.synapse(self.pyr, wep)
+		self.pv.synapse(self.pv, wpp)
+		self.pv.synapse(self.vip, wvp)
+		self.pv.synapse(self.som, wsp)
+
+		self.vip.synapse(self.pyr, wev)
+		self.vip.synapse(self.som, wsv)
 
 
 	### MODEL
@@ -73,16 +93,10 @@ class CCM():
 
 
 	# Compute equilibria as soon as instantiated : 
-		self.S = self.equilibria()
+		self.hidden_eq = False # Hidden equilibria, supra-saturation dynamics
+		if equilibria : self.S = self.equilibria()
+		else : self.S = [None]
 
-
-	# Populational response functions, as derived from [Papasavvas, 2015].   MAYBE DEFINE THEM IN THE __INIT__() ? OR IN THE SIMULATION (easier if we want to be able to create the simpler_CCM from the same class) ?  
-	def f(self, a_, b_, x, b, a):
-		return .5 * ( 1. + torch.tanh( torch.as_tensor([.5 * ( (a_ / (1. + a)) * (x - b - b_) )]) ).item() ) - ( 1./(1. + torch.exp( torch.as_tensor([a_*b_/(1.+a)]) ).item() ) )
-	
-	# Asymptotic plateau of populational response functions, as derived from [Papasavvas, 2015]
-	def K(self, a_, b_, a):
-		return torch.exp(torch.as_tensor([a_*b_/(1.+a)])).item() / (1. + torch.exp(torch.as_tensor([a_*b_/(1.+a)])).item())
 
 	def simulate(self, sim_prm = None, reject=True, info=False, plot=False, dmts = False, cue_timings = [1]):
 		"""
@@ -116,7 +130,6 @@ class CCM():
 		
 		window = sim_prm[0].item() # Stimulation window [s](float).
 		dt = sim_prm[1].item() # Time resolution [s](float).
-		self.tr = sim_prm[2].item() # Refractory time [in unit 'dt'](float).		# FIX THAT #
 		atol, rtol = sim_prm[3].item(), sim_prm[4].item() # Absolute and relative tolerances for float comparison.
 		
 		if torch.isnan(sim_prm[5]):
@@ -124,7 +137,8 @@ class CCM():
 		else:
 			torch.manual_seed(sim_prm[5])
 		
-		smin = round(3 * max(self.tau, self.tau_adp) / dt) # Starting time for stimulation window [1](int).
+		#smin = round(3 * max(self.tau, self.tau_adp) / dt) # Starting time for stimulation window [1](int).
+		smin = 10 			# CORRECT THAT
 		smax = round(window / dt) # End of stimulation window [1](int).
 		N = smin + smax # Total number of time-points [1](int)
 
@@ -136,7 +150,6 @@ class CCM():
 			tsr = torch.empty((19, N), device=self.dev, dtype=torch.float64)
 		else:
 			tsr = torch.empty((9, N), device=self.dev, dtype=torch.float64)
-		#s = self.poisson.sample().item() + smin 	# WHAT'S THIS USEFUL FOR ? No effect of removing it...
 		stim = []
 	
 		for k in range(N):
@@ -150,51 +163,34 @@ class CCM():
 				if k*dt in cue_timings:
 					trans = self.I_trans
 				
-			# PYR activity.
-			Ie = self.Ie_ext + trans # External input [1](float).
-			ine_e = self.wee*re - Ie_adp + Ie # Excitatory input [1](float).
-			ins_e = self.wse*rs + (1-self.q)*self.wpe*rp # Substractive inhibitory input [1](float). 
-			ind_e = self.q*self.wpe*rp # Divisive inhibitory input [1](float). 
-			Ie_adp += (dt/self.tau_adp) * ( - Ie_adp + re * self.J_adp ) # PYR activity-dependent adaptation current [1](float).
-			Ke = self.K(self.a_e, self.b_e, ind_e) # Response function plateau [1](float).
-			dre = (dt/self.tau) * ( - re + (self.Ae*Ke - self.tr*re)*self.f(self.a_e, self.b_e, ine_e, ins_e, ind_e)  ) + self.Ae * Ke * np.sqrt(dt) * self.sigma * self.n.sample().item() # PYR activity derivative [spikes/min²](float).
-			re += dre # PYR activity rate [spikes/min](float).
-			
-			# PV activity.
-			ine_p = self.wep*re + self.Ip_ext # Excitatory input [1](float).
-			ins_p = self.wpp*rp + self.wvp*rv + self.wsp*rs # Substractive inhibitory input [1](float).
-			ind_p = 0. # Divisive inhibitory input [1](float).
-			Kp = self.K(self.a_p, self.b_p, ind_p) # Response function plateau [1](float).
-			drp = (self.dt/self.tau) * ( - rp + (self.Ap*Kp - self.tr*rp)*self.f(self.a_p, self.b_p, ine_p, ins_p, ind_p)  ) + self.Ap * Kp * np.sqrt(dt) * self.sigma * self.n.sample().item() # PV activity derivative [spikes/min²](float).
-			rp += drp # PV activity rate [spikes/min](float).
-			
-			# SOM activity.
-			ine_s = self.wes*re + self.Is_ext # Excitatory input [1](float).
-			ins_s = self.wvs*rv # Substractive inhibitory input [1](float).
-			ind_s = 0. # Divisive inhibitory input [1](float).
-			Ks = self.K(self.a_s, self.b_s, ind_s) # Response function plateau [1](float).
-			drs = (dt/self.tau) * ( - rs + (self.As*Ks - self.tr*rs)*self.f(self.a_s, self.b_s, ine_s, ins_s, ind_s)  ) + self.As * Ks * np.sqrt(dt) * self.sigma * self.n.sample().item() # SOM activity derivative [spikes/min²](float).
-			rs += drs # SOM activity rate [spikes/min](float).
-
-			# VIP activity.
-			ine_v = self.wev*re + self.Iv_ext # Excitatory input [1](float).
-			ins_v = self.wsv*rs # Substractive inhibitory input [1](float).
-			ind_v = 0. # Divisive inhibitory input [1](float). 
-			Kv = self.K(self.a_v, self.b_v, ind_v) # Response function plateau [1](float).
-			drv = (dt/self.tau) * ( - rv + (self.Av*Kv - self.tr*rv)*self.f(self.a_v, self.b_v, ine_v, ins_v, ind_v)  ) + self.Av * Kv * np.sqrt(dt) * self.sigma * self.n.sample().item() # VIP activity derivative [spikes/min²](float).
-			rv += drv # VIP activity rate [spikes/min](float).
+			self.pyr.step(dt, self.n.sample().item(), trans = trans)
+			self.pv.step(dt, self.n.sample().item())
+			self.som.step(dt, self.n.sample().item())
+			self.vip.step(dt, self.n.sample().item())
 			
 			t = k * dt # Time [s](float).
 			tsr[self.TT, k] = t
 			
-			if plot:
+			if plot:  # FIX THAT AS WELL
 				tsr[self.RE, k], tsr[self.dRE, k], tsr[self.INE_E, k], tsr[self.INS_E, k], tsr[self.IND_E, k], tsr[self.IE_ADP, k] = max(re, 0.), dre, ine_e, ins_e, ind_e, Ie_adp
 				tsr[self.RP, k], tsr[self.dRP, k], tsr[self.INE_P, k], tsr[self.INS_P, k] = max(rp, 0.), drp, ine_p, ins_p
 				tsr[self.RS, k], tsr[self.dRS, k], tsr[self.INE_S, k], tsr[self.INS_S, k] = max(rs, 0.), drs, ine_s, ins_s
 				tsr[self.RV, k], tsr[self.dRV, k], tsr[self.INE_V, k], tsr[self.INS_V, k] = max(rv, 0.), drv, ine_v, ins_v
 			else:
-				tsr[self.RE, k], tsr[self.RP, k], tsr[self.RS, k], tsr[self.RV, k] = max(re, 0.), max(rp, 0.), max(rs, 0.), max(rv, 0.)
-		
+				tsr[self.RE, k], tsr[self.RP, k], tsr[self.RS, k], tsr[self.RV, k] = self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr
+
+
+		print('\nSYNAPSES :')
+		for pop in [self.pyr, self.pv, self.som, self.vip]:
+			print('NAME :\t', pop.name)
+			print('EXCITATORY :\t', [syn.presyn.name for syn in pop.glut_synapses])
+			print('INHIBITORY :\t', [syn.presyn.name for syn in pop.gaba_synapses])
+
+
+		self.pyr.reset()
+		self.pv.reset()
+		self.som.reset()
+		self.vip.reset()		
 		
 		self.simulations.append((Simulation(tsr, stim, sim_prm, self.mod_prm, self.dof, self.S, reject, info, plot)))
 
@@ -226,7 +222,7 @@ class CCM():
 			# TEMPORARY - Maybe put the sim_prm as argument of equilibria ?..
 			# But something's odd, equilibria shouldn't depend on simulation parameters
 			self.dt = .01
-			self.tr = 1.
+			self.tr = 1. 		# WTF ?!
 			self.atol, self.rtol = 1e-12, 1e-3
 	
 			re, rp, rs, rv = x[0], x[1], x[2], x[3]
@@ -260,11 +256,19 @@ class CCM():
 	
 			return [dre, drp, drs, drv]
 		
-		S = [np.random.uniform(size=4)]
-		for k in range(400):
-			x0 = [400*np.random.uniform(size=4) - 200]
-			sol = optimize.root(F, x0, method='hybr')
-			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():
-				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all():
-					S.append(sol.x)
-		return S
+		S = S[1:]
+
+		# ATTEMPTING TO CUT SATURATED EQUILIBRIA OFF, gotta go back to this
+		'''
+		for s in S:
+			if not np.array([fr < .45 for fr in [s[0] / self.Ae, s[1] / self.Ap, s[2] / self.As, s[3] /self.Av]]).all() :
+				# S.remove(s)	HERE bug : the truth value of an array with more than one element is ambiguous
+				print('smt')
+				self.hidden_eq = True
+		'''
+
+		return np.sort(S, 0)
+
+
+	def free(): # Free memory from this column and every attached population
+		pass 
