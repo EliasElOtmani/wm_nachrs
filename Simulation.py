@@ -26,7 +26,7 @@ class Simulation():
 
 		# Model parameters we're interested in
 		self.tau, self.tau_adp = mod_prm[0].item(), mod_prm[1].item()
-		self.tr = sim_prm[13].item() # Refractory time [in unit 'dt'](float).
+		self.tr = mod_prm[13].item() # Refractory time [in unit 'dt'](float).
 		self.Ae, self.Ap, self.As, self.Av = dof[0].item(), dof[1].item(), dof[2].item(), dof[3].item()
 
 		self.traces = traces
@@ -83,12 +83,12 @@ class Simulation():
 			else:
 				return torch.median(t).item()
 		
-		if self.aborted or (self.reject and self.S != None and len(self.S)<3):
+		if self.aborted or (self.reject and len(self.S)<3):
 			if self.info : print("Model not bistable")
 			return torch.as_tensor([nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan], device=self.dev, dtype=self.enc)
 
 		# 4dim vector corresponding to fr values of neural populations for critical point, if model bistable (else set to 10)
-		if self.equilbria and len(self.S) == 3 : critic = self.S[1]
+		if self.equilibria and len(self.S) == 3 : critic = self.S[1]
 		else : critic = torch.as_tensor([10,10,10,10], device = self.dev, dtype = self.enc) 
 
 		# Sorting neural activities wrt to H/L states.

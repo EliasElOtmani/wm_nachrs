@@ -22,8 +22,8 @@ dev = torch.device(computer)
 
 
 #mod_prm = torch.as_tensor([.020, .600, .8, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7.], device=dev, dtype=enc)
-mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45, 0.005], device=dev, dtype=enc)		# refractory period : from 0.0025 to 0.01
-sim_prm = torch.as_tensor([200, .01, 1., 1e-12, 1e-3], device=dev, dtype=enc)
+mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45, 1], device=dev, dtype=enc)		# refractory period : from 0.0025 to 0.01
+sim_prm = torch.as_tensor([200, .01, 1e-12, 1e-3, nan], device=dev, dtype=enc)  # Here's THE PB compare w/ github, sim_prm[2]...
 
 #########################################################################################################################################################
 # FREE PARAMETERS #
@@ -58,54 +58,6 @@ dof = torch.as_tensor([
 ], device=dev, dtype=enc)
 
 
-# PROJECTIONS SELF-COHERENCY
-# wpe	# wpp	
-.101*Ap, .093*Ap 	# Fair enough, but wpv = 0.2*wpp, take into account ? 
-
-# wse 	# wsp 	# wsv 
-.002*As, .0*As, .001*As   #Also, Wsv normally = 1.3*Wse. 
-#Wsp not insignificant either, > 0.5*Wse
-
-# wvs 	# wvp 	
-.048*Av, .042*Av 	# Fair enough but normally Wvp = 0.25*Wvs. Maybe explains invariance of PV neurons ! 
-
-# Wee 	# Wep 	# Wes 	# Wev
-.136,  	.112,	.077, 	.041 # (*Ae)
-# Perfect projections to INs :D but Wee way too high. Wee 50 times weaker than Wep normally.
-# This might explain apparent lower contribution PYR-INs as compared to INs-INs. 
-# Also, probably bias induced by necessity to have the oscillations fully sustained in L23, 
-# maybe external input necessary. Gotta go back to litterature on UP states. 
-
-# EXTRINSIC COHERENCY 
-
-# wpe    #wse
-27,		 17 	# Fair enough
-
-# Wpp 	Wsp		Wvp 	Wep
-25,		0, 		15,		19   
-# Wsp should be 0.25*Wpp even when considering pop size... Wvp way too high (should be < Wsp)
-# Wep fair enough but not when we take into account pop size... (should be way bigger)
-
-# Wvs 	Wps 	Wes 
-8,		None 	13
-# Perfect for INs. 
-# Wes should be 4*Wvs though, way too low here
-
-# Wpv 	Wsv 	Wvv 	Wev 
-None 	0.85 	None 	6.8 
-# Wpv shouldn't be neglected as stated above 
-# Wvv can safely be so it's fine. 
-# Wev too high now when not taking into account pop (INC e-v = 0.5 s-v)
-# still too low when considering pop size --> WEV TOO LOW FOR SURE
-
-
-# CONCLUSION : 
-# Wee too high, all other Wex too low
-# Wsv should be >= Wse
-# Wsp should be considered, > 0.5* Wse
-# Wpv might be considered, 0.2*Wpp
-
-
 
 
 
@@ -114,14 +66,14 @@ None 	0.85 	None 	6.8
 
 
 info = True
-reject = True 
+reject = False 
 plot = False 
 
-ccm = CCM(dof, mod_prm, sim_prm)
+ccm = CCM(dof, mod_prm, sim_prm, equilibria = True)
 
 
 
-ccm.simulate(dmts = False)
+ccm.simulate(dmts = False, reject = False)
 sim = ccm.simulations[0]
 tsr, stim = sim.traces, sim.stimuli
 eqs = sim.S
@@ -136,7 +88,7 @@ if info:
 		  '\n\n Equilibria: \n\n', np.sort(eqs, 0),
 		  '\n\n Summary statistics of simulated data: \n\n', res, '\n')
 
-print('\n\n', np.sort(ccm.S, 0)[1])
+#print('\n\n', np.sort(ccm.S, 0)[1])
 
 
 #print(ccm.equilibria())

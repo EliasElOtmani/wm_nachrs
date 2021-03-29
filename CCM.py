@@ -75,7 +75,7 @@ class CCM():
 	# Compute equilibria as soon as instantiated : 
 		self.hidden_eq = False # Hidden equilibria, supra-saturation dynamics
 		if equilibria : self.S = self.equilibria()
-		else : self.S = None
+		else : self.S = [None]
 
 
 	# Populational response functions, as derived from [Papasavvas, 2015].   MAYBE DEFINE THEM IN THE __INIT__() ? OR IN THE SIMULATION (easier if we want to be able to create the simpler_CCM from the same class) ?  
@@ -110,10 +110,10 @@ class CCM():
 			
 		"""
 
-		if self.reject and equilibria and len(self.S)<3:
-			if self.info : print("Model not bistable")
+		if reject and equilibria and len(self.S)<3:
+			if info : print("Model not bistable")
 			traces = None
-			return Simulation(traces, stimuli, sim_prm, mod_prm, dof, S, reject, info, plot, empty = True)
+			return Simulation(traces, stimuli, sim_prm, mod_prm, dof, S, reject, info, plot, aborted = True)
 
 	### SIMULATION PARAMETERS
 		if sim_prm == None : sim_prm = self.sim_prm
@@ -171,7 +171,7 @@ class CCM():
 			ins_p = self.wpp*rp + self.wvp*rv + self.wsp*rs # Substractive inhibitory input [1](float).
 			ind_p = 0. # Divisive inhibitory input [1](float).
 			Kp = self.K(self.a_p, self.b_p, ind_p) # Response function plateau [1](float).
-			drp = (self.dt/self.tau) * ( - rp + (self.Ap*Kp - self.tr*rp)*self.f(self.a_p, self.b_p, ine_p, ins_p, ind_p)  ) + self.Ap * Kp * np.sqrt(dt) * self.sigma * self.n.sample().item() # PV activity derivative [spikes/min²](float).
+			drp = (dt/self.tau) * ( - rp + (self.Ap*Kp - self.tr*rp)*self.f(self.a_p, self.b_p, ine_p, ins_p, ind_p)  ) + self.Ap * Kp * np.sqrt(dt) * self.sigma * self.n.sample().item() # PV activity derivative [spikes/min²](float).
 			rp += drp # PV activity rate [spikes/min](float).
 			
 			# SOM activity.
