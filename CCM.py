@@ -25,6 +25,8 @@ class CCM():
 		self.simulations = []
 
 		### FIXED MODEL PARAMETERS
+
+		# /!\ Tref shouldn't be the same for all neurons ! 
 		
 		tau_m, tau_adp = mod_prm[0].item(), mod_prm[1].item()	 # Circuit and adaptation time constants [s](float) ; Amount of divisive inhibition [1](float).
 		self.I_trans = mod_prm[2].item()
@@ -56,14 +58,14 @@ class CCM():
 		# Also, we fix I_trans (originally dof[18] as mod_prm[13]. Instead, 
 		# we define q as a free parameter (originally defined above as mod[2])
 
-		## GOTTA ADD THE "SELF" 
+	### POPULATIONS & CONNEXIONS INSTANCIATION
 
 		self.pyr = NeuralPop('pyr', Ae, sigma, tau_m, tau_adp, a_e, b_e, Ie_ext, NT = 'glutamate', Tref = Tref, J_adp = J_adp)
 		self.pv  = NeuralPop('pv',  Ap, sigma, tau_m, tau_adp, a_p, b_p, Ip_ext, NT = 'gaba', Tref = Tref)
 		self.som = NeuralPop('som', As, sigma, tau_m, tau_adp, a_s, b_s, Is_ext, NT = 'gaba', Tref = Tref)
 		self.vip = NeuralPop('vip', Av, sigma, tau_m, tau_adp, a_v, b_v, Iv_ext, NT = 'gaba', Tref = Tref)
 
-		self.pyr.synapse(self.pyr, wee, printt = True)
+		self.pyr.synapse(self.pyr, wee)
 		self.pyr.synapse(self.pv, wpe, q)
 		self.pyr.synapse(self.som, wse)
 
@@ -77,6 +79,8 @@ class CCM():
 
 		self.vip.synapse(self.pyr, wev)
 		self.vip.synapse(self.som, wsv)
+
+		self.populations = [self.pyr, self.pv, self.som, self.vip]
 
 
 	### MODEL
@@ -145,14 +149,13 @@ class CCM():
 
 	### SIMULATION 
 
-		re, dre, Ie_adp, ine, rs, drs, rp, drp, rv, drv, t = 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.
 		if plot:
 			tsr = torch.empty((19, N), device=self.dev, dtype=torch.float64)
 		else:
 			tsr = torch.empty((9, N), device=self.dev, dtype=torch.float64)
 		stim = []
 	
-		for k in range(N):
+		for k in tqdm(range(N)):
 			
 			trans = 0.
 			if not dmts:
@@ -162,7 +165,7 @@ class CCM():
 			else : 
 				if k*dt in cue_timings:
 					trans = self.I_trans
-				
+
 			self.pyr.step(dt, self.n.sample().item(), trans = trans)
 			self.pv.step(dt, self.n.sample().item())
 			self.som.step(dt, self.n.sample().item())
@@ -180,17 +183,7 @@ class CCM():
 				tsr[self.RE, k], tsr[self.RP, k], tsr[self.RS, k], tsr[self.RV, k] = self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr
 
 
-		print('\nSYNAPSES :')
-		for pop in [self.pyr, self.pv, self.som, self.vip]:
-			print('NAME :\t', pop.name)
-			print('EXCITATORY :\t', [syn.presyn.name for syn in pop.glut_synapses])
-			print('INHIBITORY :\t', [syn.presyn.name for syn in pop.gaba_synapses])
-
-
-		self.pyr.reset()
-		self.pv.reset()
-		self.som.reset()
-		self.vip.reset()		
+		for pop in self.populations : pop.reset()		
 		
 		self.simulations.append((Simulation(tsr, stim, sim_prm, self.mod_prm, self.dof, self.S, reject, info, plot)))
 
@@ -199,8 +192,7 @@ class CCM():
 		# Shouldn't fr be constrained to positive values earlier in the code ? 
 
 
-	def equilibria(self):
-		## TRY and modify atol & rtol or smt to get rid of the 4 equilibria when there're only 3... 
+	def equilibria(self): 
 
 		"""
 		
@@ -222,11 +214,12 @@ class CCM():
 			# TEMPORARY - Maybe put the sim_prm as argument of equilibria ?..
 			# But something's odd, equilibria shouldn't depend on simulation parameters
 			self.dt = .01
-			self.tr = 1. 		# WTF ?!
+			#self.tr = 1. 		# WTF ?!
 			self.atol, self.rtol = 1e-12, 1e-3
 	
+			'''
 			re, rp, rs, rv = x[0], x[1], x[2], x[3]
-	
+
 			Ie_adp = 0.
 			Ie = self.Ie_ext - Ie_adp
 			ine = self.wee*re + Ie
@@ -255,7 +248,24 @@ class CCM():
 			drv = (self.dt/self.tau)*( - rv + (self.Av*Kv - self.tr*rv)*self.f(self.a_v, self.b_v, ine, ins, ind)  )
 	
 			return [dre, drp, drs, drv]
-		
+			'''
+
+			self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr = x[0], x[1], x[2], x[3]
+			return [self.pyr.get_derivative(self.dt), self.pv.get_derivative(self.dt), self.som.get_derivative(self.dt), self.pv.get_derivative(self.dt)]
+
+		for pop in self.populations : pop.deterministic()
+
+		S = [np.random.uniform(size=4)]
+		for k in range(400):
+			x0 = [400*np.random.uniform(size=4) - 200]
+			sol = optimize.root(F, x0, method='hybr')
+			#sol = optimize.fsolve(F, x0)
+			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():
+				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all():
+					S.append(sol.x)
+
+		for pop in self.populations : pop.reset()
+
 		S = S[1:]
 
 		# ATTEMPTING TO CUT SATURATED EQUILIBRIA OFF, gotta go back to this

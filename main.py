@@ -68,12 +68,12 @@ dof = torch.as_tensor([
 
 
 info = True
-reject = True 
+reject = False
 plot = False 
 
-ccm = CCM(dof, mod_prm, sim_prm)
+ccm = CCM(dof, mod_prm, sim_prm, equilibria = True)
 
-ccm.simulate(dmts = False)
+ccm.simulate(reject = reject, dmts = False)
 sim = ccm.simulations[0]
 tsr, stim = sim.traces, sim.stimuli
 eqs = sim.S

@@ -39,56 +39,56 @@ class NeuralPop():
 	def __K(self, a):
 		return torch.exp(torch.as_tensor([self.a_*self.b_/(1.+a)])).item() / (1. + torch.exp(torch.as_tensor([self.a_*self.b_/(1.+a)])).item())
 
-	def synapse(self, presynaptic, weight, q = 0, STP = None, printt = False):
+	def synapse(self, presynaptic, weight, q = 0, STP = None):
 		if presynaptic.NT == 'gaba':
-			self.gaba_synapses.append(self.Synapse(presynaptic, weight, q, STP, printt))
+			self.gaba_synapses.append(self.Synapse(presynaptic, weight, q, STP))
 		elif presynaptic.NT == 'glutamate':
-			self.glut_synapses.append(self.Synapse(presynaptic, weight, q, STP, printt))
+			self.glut_synapses.append(self.Synapse(presynaptic, weight, q, STP))
 
 
-	def step(self, dt, noise, trans = 0):	# Noise had to be sampled in or before the declaration
+	def get_derivative(self, dt, noise = 0, trans = 0):	# Noise had to be sampled in or before the declaration
 		
-		#print('\nNAME :\t\t', self.name)
-		#print('FR :\t\t', self.fr)
 		Ie = self.Iext + trans # External input [1](float).		
 		epsp = np.sum([syn.input() for syn in self.glut_synapses]) - self.Iadp + Ie 
-		#print('EPSP :\t\t', epsp)
 		sub_ipsp = np.sum([syn.input() for syn in self.gaba_synapses]) 
-		#print('SUB_IPSP :\t', sub_ipsp)
 		div_ipsp = np.sum([syn.divisive_input() for syn in self.gaba_synapses])
-		#print('DIV_IPSI :\t', div_ipsp)
-		self.Iadp += (dt/self.tau_adp) * ( - self.Iadp + self.fr * self.J_adp )
+		self.dIadp = (dt/self.tau_adp) * ( - self.Iadp + self.fr * self.J_adp )
 		Ke = self.__K(div_ipsp)
 
-		self.fr += (dt/self.tm) * ( - self.fr + (self.A*Ke - self.Tref*self.fr)*self.__f(epsp, sub_ipsp, div_ipsp) ) + self.A * Ke * np.sqrt(dt) * self.sigma * noise
-		#print((dt/self.tm) * ( - self.fr + (self.A*Ke - self.Tref*self.fr)*self.__f(epsp, sub_ipsp, div_ipsp) ) + self.A * Ke * np.sqrt(dt) * self.sigma * noise)
-		self.fr = max(self.fr, 0.)
+		self.dfr = (dt/self.tm) * ( - self.fr + (self.A*Ke - self.Tref*self.fr)*self.__f(epsp, sub_ipsp, div_ipsp) ) + self.A * Ke * np.sqrt(dt) * self.sigma * noise
+		return self.dfr
 
+	def step(self, dt, noise, trans = 0, dfr_computed = False):
+
+		if not dfr_computed : self.get_derivative(dt, noise, trans)
+		self.Iadp += self.dIadp
+		self.fr += self.dfr
+		self.fr = max(self.fr, 0.)
 
 	def deterministic(self): 			# Abolishes noise until reset (for equilibria computing)
 		self.sigma_buffer = self.sigma 
 		self.J_adp_buffer = self.J_adp 
+		self.Iadp = 0
 		self.sigma = 0
 		self.J_adp = 0
 
 	def reset(self):
 		self.adp = 0
 		self.fr = 0
+		self.Iadp = 0
 		self.sigma = self.sigma_buffer
 		self.J_adp = self.J_adp_buffer
 		
 
 	class Synapse():  # Synapse(self) ? (--> self.Synapse())
 
-		def __init__(self, presyn, weight, q = 0, STP = None, printt = False):
+		def __init__(self, presyn, weight, q = 0, STP = None):
 			self.presyn = presyn 	# Presynaptic neural population
 			self.weight = weight
 			self.q = q
 			self.plasticity = STP   # We'll have to allow for fixing its weight / rate... 
-			self.printt = printt
 
 		def input(self):
-			#if self.printt : print((1-self.q)*(self.weight*self.presyn.fr))
 			return (1-self.q)*(self.weight*self.presyn.fr)
 
 		def divisive_input(self):

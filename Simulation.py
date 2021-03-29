@@ -6,7 +6,7 @@ import os, sys, time, torch
 
 class Simulation():
 
-	def __init__(self, traces, stimuli, sim_prm, mod_prm, dof, S, reject=True, info=False, plot=False, dmts = False, aborted = False):
+	def __init__(self, traces, stimuli, sim_prm, mod_prm, dof, S, reject=False, info=False, plot=False, dmts = False, aborted = False):
 
 		computer = "cpu"
 		self.enc = torch.float64
@@ -91,7 +91,7 @@ class Simulation():
 		# Sorting neural activities wrt to H/L states.
 		###############################################
 
-		tsr_ = self.traces.narrow(1, self.smin, self.smax)	# We get rid of neural traces outside our simulation window's scope
+		tsr_ = self.traces.narrow(1, self.smin, self.smax-self.smin)	# We get rid of neural traces outside our simulation window's scope
 		# CAREFUL the vector actually goes from smin to smin+smax
 		
 		mask_he = torch.gt(tsr_[self.RE,:], critic[0].item())	# Ouputs a boolean vector corresponding to each PYR fr value being above (True) or below (False) critical point 
