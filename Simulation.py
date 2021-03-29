@@ -27,15 +27,15 @@ class Simulation():
 		
 		self.window = sim_prm[0].item() # Stimulation window [s](float).
 		self.dt = sim_prm[1].item() # Time resolution [s](float).
-		self.atol, self.rtol = sim_prm[3].item(), sim_prm[4].item() # Absolute and relative tolerances for float comparison.
+		self.atol, self.rtol = sim_prm[2].item(), sim_prm[3].item() # Absolute and relative tolerances for float comparison.
 		self.plot = plot
 		self.info = info
 		self.reject = reject
 		
-		if torch.isnan(sim_prm[5]):
+		if torch.isnan(sim_prm[4]):
 			torch.manual_seed(time.time())
 		else:
-			torch.manual_seed(sim_prm[5])
+			torch.manual_seed(sim_prm[4])
 
 		self.smin = round(3 * max(self.tau, self.tau_adp) / self.dt) # Starting time for stimulation window [1](int).
 		self.smax = round(self.window / self.dt) # End of stimulation window [1](int).
