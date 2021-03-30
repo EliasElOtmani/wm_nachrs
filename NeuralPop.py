@@ -3,7 +3,7 @@ import torch
 
 class NeuralPop():
 
-	def __init__(self, neural_name, amplitude, sigma, tau_m, tau_adp, a_, b_, Iext, J_adp = 0, STP = None, Tref = 0.01, NT = 'gaba'):  #We can maybe think about pop size
+	def __init__(self, neural_name, amplitude, sigma, tau_m, tau_adp, a_, b_, Iext, J_adp = 0, STP = None, Tref = 1, NT = 'gaba'):  #We can maybe think about pop size
 		
 		if NT != 'glutamate' and NT != 'gaba':
 			raise ValueError(NT + ' is not supported. Please enter only glutamate or gaba as NT')
@@ -46,10 +46,10 @@ class NeuralPop():
 			self.glut_synapses.append(self.Synapse(presynaptic, weight, q, STP))
 
 
-	def get_derivative(self, dt, noise = 0, trans = 0):	# Noise had to be sampled in or before the declaration
+	def get_derivative(self, dt, noise = 0, trans = 0, oui = False):	# Noise has to be sampled in or before the declaration
 		
 		Ie = self.Iext + trans # External input [1](float).		
-		epsp = np.sum([syn.input() for syn in self.glut_synapses]) - self.Iadp + Ie 
+		epsp = np.sum([syn.input() for syn in self.glut_synapses]) - self.Iadp + Ie
 		sub_ipsp = np.sum([syn.input() for syn in self.gaba_synapses]) 
 		div_ipsp = np.sum([syn.divisive_input() for syn in self.gaba_synapses])
 		self.dIadp = (dt/self.tau_adp) * ( - self.Iadp + self.fr * self.J_adp )

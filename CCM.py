@@ -13,7 +13,7 @@ from Simulation import Simulation
 
 class CCM():
 
-	def __init__(self, dof, mod_prm, sim_prm = None, equilibria = False, computer = "cpu", enc = torch.float64):
+	def __init__(self, dof, mod_prm, sim_prm = None, equilibria = False, reject = False, computer = "cpu", enc = torch.float64):
 
 		# TEMPORARY, find a way to better deal with this
 		self.dev = torch.device(computer)
@@ -21,6 +21,8 @@ class CCM():
 		self.sim_prm = sim_prm
 		self.mod_prm = mod_prm
 		self.dof = dof
+
+		self.reject = reject
 
 		self.simulations = []
 
@@ -83,7 +85,7 @@ class CCM():
 		self.populations = [self.pyr, self.pv, self.som, self.vip]
 
 
-	### MODEL
+	### MODEL 
 		
 		# Sources of stochasticity.
 		self.poisson = torch.distributions.poisson.Poisson(torch.tensor([self.usf])) # Poisson distribution of stimuli. 
@@ -98,11 +100,15 @@ class CCM():
 
 	# Compute equilibria as soon as instantiated : 
 		self.hidden_eq = False # Hidden equilibria, supra-saturation dynamics
-		if equilibria : self.S = self.equilibria()
-		else : self.S = [None]
+		if equilibria : 
+			self.S = self.equilibria()
+			self.critic = self.S[1]
+		else : 
+			self.S = [None]
+			self.critic = torch.as_tensor([10,10,10,10], device = self.dev, dtpye = torch.float64)
 
 
-	def simulate(self, sim_prm = None, reject=True, info=False, plot=False, dmts = False, cue_timings = [1]):
+	def simulate(self, sim_prm = None, info=False, plot=False, dmts = False, cue_timings = [1], reject = None): 
 		"""
 		
 		Returns raw simulated data corresponding to time-evolutions of CCM's latent variables. 
@@ -127,10 +133,17 @@ class CCM():
 		"""
 
 	### SIMULATION PARAMETERS
-		if sim_prm == None : sim_prm = self.sim_prm
-		if sim_prm == None : 
+		if sim_prm is None : sim_prm = self.sim_prm
+		if sim_prm is None : 
 			print('No simulation parameters declared')
 			return 
+
+	### ABORT 
+		if reject is None : reject = self.reject
+		if reject and len(self.S < 3):
+			if info : print('Model not bistable')
+			return Simulation(None, None, sim_prm, self.mod_prm, self.dof, self.critic, aborted = True)
+
 		
 		window = sim_prm[0].item() # Stimulation window [s](float).
 		dt = sim_prm[1].item() # Time resolution [s](float).
@@ -185,7 +198,7 @@ class CCM():
 
 		for pop in self.populations : pop.reset()		
 		
-		self.simulations.append((Simulation(tsr, stim, sim_prm, self.mod_prm, self.dof, self.S, reject, info, plot)))
+		self.simulations.append((Simulation(tsr, stim, sim_prm, self.mod_prm, self.dof, reject, info, plot, self.critic)))
 
 		return self.simulations[-1]
 
@@ -211,60 +224,37 @@ class CCM():
 		"""
 		def F(x):
 
-			# TEMPORARY - Maybe put the sim_prm as argument of equilibria ?..
-			# But something's odd, equilibria shouldn't depend on simulation parameters
-			self.dt = .01
-			#self.tr = 1. 		# WTF ?!
-			self.atol, self.rtol = 1e-12, 1e-3
-	
-			'''
-			re, rp, rs, rv = x[0], x[1], x[2], x[3]
+			dt = 0.01
 
-			Ie_adp = 0.
-			Ie = self.Ie_ext - Ie_adp
-			ine = self.wee*re + Ie
-			ins = self.wse*rs + (1-self.q)*self.wpe*rp
-			ind = self.q*self.wpe*rp
-			Ke = self.K(self.a_e, self.b_e, ind)
-			dre = (self.dt/self.tau)*( - re + (self.Ae*Ke - self.tr*re)*self.f(self.a_e, self.b_e, ine, ins, ind)  )
-	
-			ine = self.wep*re + self.Ip_ext
-			ins = self.wpp*rp + self.wvp*rv + self.wsp*rs
-			ind = 0.
-			Kp = self.K(self.a_p, self.b_p, ind)
-			drp = (self.dt/self.tau)*( - rp + (self.Ap*Kp - self.tr*rp)*self.f(self.a_p, self.b_p, ine, ins, ind)  )
-		
-			Is_adp = 0.
-			ine = self.wes*re + self.Is_ext - Is_adp
-			ins = self.wvs*rv
-			ind = 0.
-			Ks = self.K(self.a_s, self.b_s, ind)
-			drs = (self.dt/self.tau)*( - rs + (self.As*Ks - self.tr*rs)*self.f(self.a_s, self.b_s, ine, ins, ind)  )
+			for pop in self.populations : pop.deterministic()
 
-			ine = self.wev*re + self.Iv_ext
-			ins = self.wsv*rs
-			ind = 0.
-			Kv = self.K(self.a_v, self.b_v, ind)
-			drv = (self.dt/self.tau)*( - rv + (self.Av*Kv - self.tr*rv)*self.f(self.a_v, self.b_v, ine, ins, ind)  )
-	
+			self.pyr.fr = x[0]
+			self.pv.fr = x[1]
+			self.som.fr = x[2]
+			self.vip.fr = x[3]
+
+			dre = self.pyr.get_derivative(dt)
+			drp = self.pv.get_derivative(dt)
+			drs = self.som.get_derivative(dt)
+			drv = self.vip.get_derivative(dt)
+
+			for pop in self.populations : pop.reset()
+
 			return [dre, drp, drs, drv]
-			'''
+			
+			#self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr = x[0], x[1], x[2], x[3]
+			#return [self.pyr.get_derivative(self.dt), self.pv.get_derivative(self.dt), self.som.get_derivative(self.dt), self.pv.get_derivative(self.dt)]
 
-			self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr = x[0], x[1], x[2], x[3]
-			return [self.pyr.get_derivative(self.dt), self.pv.get_derivative(self.dt), self.som.get_derivative(self.dt), self.pv.get_derivative(self.dt)]
-
-		for pop in self.populations : pop.deterministic()
-
+		self.atol, self.rtol = 1e-12, 1e-3
+		
 		S = [np.random.uniform(size=4)]
-		for k in range(400):
+		for k in range(1000):
 			x0 = [400*np.random.uniform(size=4) - 200]
 			sol = optimize.root(F, x0, method='hybr')
 			#sol = optimize.fsolve(F, x0)
 			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():
 				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all():
 					S.append(sol.x)
-
-		for pop in self.populations : pop.reset()
 
 		S = S[1:]
 

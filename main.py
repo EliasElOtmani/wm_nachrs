@@ -12,6 +12,9 @@ from DMTS import DMTS
 # Convert tensor tens to np array : tens = tens.numpy()
 
 
+
+# SEE the self.reject and aborted if len S < 3 : gotta find a way to implement it befor the simulation has been created
+
 computer = "cpu"
 dev_str = 'cpu'
 cores = 6
@@ -48,8 +51,8 @@ dof = torch.as_tensor([
 
 
 
-mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45, 0.1], device=dev, dtype=enc)		# refractory period : from 0.0025 to 0.01
-sim_prm = torch.as_tensor([200, .01, 1e-12, 1e-3, nan], device=dev, dtype=enc)
+mod_prm = torch.as_tensor([.020, .600, 4.5, 0., 1.9, 2.6, 1.5, 1.2, 7., 7., 7., 7., 1/45, 1], device=dev, dtype=enc)		# refractory period : from 0.0025 to 0.01
+sim_prm = torch.as_tensor([10, .01, 1e-12, 1e-3, nan], device=dev, dtype=enc)
 
 Ae, Ap, As, Av = 169, 268, 709, 634
 dof = torch.as_tensor([
@@ -61,6 +64,7 @@ dof = torch.as_tensor([
     0.8, .058*Ae, .02 # q, J_adp, sigma (3)
     
 ], device=dev, dtype=enc)
+
 
 ############################################################################################################################################################
 
@@ -74,7 +78,7 @@ ccm = CCM(dof, mod_prm, sim_prm, equilibria = True)
 ccm.simulate(reject = reject, dmts = False)
 sim = ccm.simulations[0]
 tsr, stim = sim.traces, sim.stimuli
-eqs = sim.S
+eqs = ccm.S
 res = sim.postproc()
 tsr = tsr.numpy()
 
@@ -92,9 +96,10 @@ if info:
 #print(ccm.equilibria())
 
 
-fig, ax = plt.subplots()
-plt.plot(tsr[0,:], color = 'red', linewidth = 2)
-plt.show()
+#fig, ax = plt.subplots()
+#plt.plot(tsr[0,:], color = 'red', linewidth = 2)
+#plt.show()
+
 
 '''
 dmts = DMTS(ccm)
