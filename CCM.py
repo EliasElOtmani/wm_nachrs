@@ -105,10 +105,10 @@ class CCM():
 			self.critic = self.S[1]
 		else : 
 			self.S = [None]
-			self.critic = torch.as_tensor([10,10,10,10], device = self.dev, dtpye = torch.float64)
+			self.critic = torch.as_tensor([10,10,10,10], device = self.dev, dtype = torch.float64)
 
 
-	def simulate(self, sim_prm = None, info=False, plot=False, dmts = False, cue_timings = [1], reject = None): 
+	def simulate(self, sim_prm = None, info=False, plot=False, dmts = False, cue_timings = [1], reject = None): # Maybe put reject in sim_prm
 		"""
 		
 		Returns raw simulated data corresponding to time-evolutions of CCM's latent variables. 
@@ -168,7 +168,7 @@ class CCM():
 			tsr = torch.empty((9, N), device=self.dev, dtype=torch.float64)
 		stim = []
 	
-		for k in tqdm(range(N)):
+		for k in range(N):
 			
 			trans = 0.
 			if not dmts:
