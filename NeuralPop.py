@@ -1,5 +1,5 @@
 import numpy as np
-import torch
+import torch, os, math
 
 class NeuralPop():
 
@@ -49,13 +49,20 @@ class NeuralPop():
 	def get_derivative(self, dt, noise = 0, trans = 0, oui = False):	# Noise has to be sampled in or before the declaration
 		
 		Ie = self.Iext + trans # External input [1](float).		
-		epsp = np.sum([syn.input() for syn in self.glut_synapses]) - self.Iadp + Ie
-		sub_ipsp = np.sum([syn.input() for syn in self.gaba_synapses]) 
-		div_ipsp = np.sum([syn.divisive_input() for syn in self.gaba_synapses])
+		epsp = np.sum([syn.input(dt) for syn in self.glut_synapses]) - self.Iadp + Ie
+		sub_ipsp = np.sum([syn.input(dt) for syn in self.gaba_synapses]) 
+		div_ipsp = np.sum([syn.divisive_input(dt) for syn in self.gaba_synapses])
 		self.dIadp = (dt/self.tau_adp) * ( - self.Iadp + self.fr * self.J_adp )
 		Ke = self.__K(div_ipsp)
 
 		self.dfr = (dt/self.tm) * ( - self.fr + (self.A*Ke - self.Tref*self.fr)*self.__f(epsp, sub_ipsp, div_ipsp) ) + self.A * Ke * np.sqrt(dt) * self.sigma * noise
+		if math.isnan(self.dfr): 
+			self.dfr = 0
+			#print('FR :\t', self.fr)
+			#print('EPSP :\t', epsp)
+			#print('IPSP :\t', sub_ipsp)
+			#print('Div \t', div_ipsp)
+			#print('Total :\t', self.__f(epsp, sub_ipsp, div_ipsp))
 		return self.dfr
 
 	def step(self, dt, noise, trans = 0, dfr_computed = False):
@@ -63,7 +70,6 @@ class NeuralPop():
 		if not dfr_computed : self.get_derivative(dt, noise, trans)
 		self.Iadp += self.dIadp
 		self.fr += self.dfr
-		self.fr = max(self.fr, 0.)
 
 	def deterministic(self): 			# Abolishes noise until reset (for equilibria computing)
 		self.sigma_buffer = self.sigma 
@@ -86,11 +92,32 @@ class NeuralPop():
 			self.presyn = presyn 	# Presynaptic neural population
 			self.weight = weight
 			self.q = q
-			self.plasticity = STP   # We'll have to allow for fixing its weight / rate... 
+			self.D = 1 	# Synaptic efficacy
+			self.tauD = 100 #Arbitrary 
 
-		def input(self):
-			return (1-self.q)*(self.weight*self.presyn.fr)
+			if STP is None : self.ss2 = 1 # Steady-state of STP for infinite input current
+			elif STP in ('d', 'D', 'depression', 'Depression'): self.ss2 = 0.5 
+			elif STP in ('f', 'F', 'facilitation', 'Facilitation') : self.ss2 = 2
+			else : 
+				print('Please declare a valid synaptic plasticity such as \'D\' of \'F\'')
+				os.exit()
 
-		def divisive_input(self):
-			return self.q*self.weight*self.presyn.fr
+		def input(self, dt):
+			current = (1-self.q)*(self.weight*self.presyn.fr)*self.D
+			if not math.isnan(self.presyn.fr) : self.D += ((1-self.D) - self.presyn.fr*(self.D - self.ss2))*(dt/self.tauD)
+			else : self.D += (1-self.D)*(dt/self.tauD) 
+			#if not self.presyn.fr < 1000 and not self.presyn.fr>0 and self.STP is not None: 
+			#	print(self.presyn.name)
+			#	print('FR :\t', self.presyn.fr)
+			#if not self.D < 2 and not self.D >0 : 
+			#	self.D = 1
+				#print('CORRECTED')
+			#if self.STP == 'facilitation' : print(self.D)
+			return max(current, 0.)
+
+		def divisive_input(self, dt):
+			current = self.q*self.weight*self.presyn.fr*self.D
+			if not math.isnan(self.presyn.fr) : self.D += ((1-self.D) - self.presyn.fr*(self.D - self.ss2))*(dt/self.tauD)
+			else : self.D += 1-self.D*(dt/self.tauD)
+			return max(current, 0.)
 

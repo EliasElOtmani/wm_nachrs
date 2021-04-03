@@ -17,10 +17,13 @@ class CCM():
 
 		# TEMPORARY, find a way to better deal with this
 		self.dev = torch.device(computer)
+		self.atol, self.rtol = 1e-12, 1e-3 
 
 		self.sim_prm = sim_prm
 		self.mod_prm = mod_prm
 		self.dof = dof
+
+		self.dim = 4
 
 		self.reject = reject
 
@@ -36,10 +39,7 @@ class CCM():
 		a_e, a_p, a_s, a_v = mod_prm[4].item(), mod_prm[5].item(), mod_prm[6].item(), mod_prm[7].item() # Maximal slopes of populational response functions [1](float).
 		b_e, b_p, b_s, b_v = mod_prm[8].item(), mod_prm[9].item(), mod_prm[10].item(), mod_prm[11].item() # Critical thresholds of populational response functions [1](float).
 		self.usf = mod_prm[12] # Frequency of ultra-slow fluctuations 
-		Tref = mod_prm[13]
-
-		# External currents [1](float).
-		Ie_ext, Ip_ext, Is_ext, Iv_ext = dof[14].item(), dof[15].item(), dof[16].item(), dof[17].item()		
+		Tref = mod_prm[13]	
 		
 	### FREE MODEL PARAMETERS (DEGREES OF FREEDOM)
 		
@@ -52,6 +52,9 @@ class CCM():
 		wep, wpp, wvp, wsp = dof[9].item() / Ae, gaba * dof[10].item() / Ap, .5*wvs, gaba * dof[11].item() / As
 		wev, wsv = dof[12].item() / Ae, gaba * dof[13].item() / As
 
+		# External currents [1](float).
+		Ie_ext, Ip_ext, Is_ext, Iv_ext = dof[14].item(), dof[15].item(), dof[16].item(), dof[17].item()	
+
 		# Bistable dynamics parameters.
 		q, J_adp, sigma = dof[18].item(), dof[19].item() / Ae, dof[20].item()
 
@@ -60,7 +63,7 @@ class CCM():
 		# Also, we fix I_trans (originally dof[18] as mod_prm[13]. Instead, 
 		# we define q as a free parameter (originally defined above as mod[2])
 
-	### POPULATIONS & CONNEXIONS INSTANCIATION
+	### POPULATIONS & CONNEXIONS INSTANTIATION
 
 		self.pyr = NeuralPop('pyr', Ae, sigma, tau_m, tau_adp, a_e, b_e, Ie_ext, NT = 'glutamate', Tref = Tref, J_adp = J_adp)
 		self.pv  = NeuralPop('pv',  Ap, sigma, tau_m, tau_adp, a_p, b_p, Ip_ext, NT = 'gaba', Tref = Tref)
@@ -68,13 +71,13 @@ class CCM():
 		self.vip = NeuralPop('vip', Av, sigma, tau_m, tau_adp, a_v, b_v, Iv_ext, NT = 'gaba', Tref = Tref)
 
 		self.pyr.synapse(self.pyr, wee)
-		self.pyr.synapse(self.pv, wpe, q)
+		self.pyr.synapse(self.pv, wpe, q, STP = 'd')
 		self.pyr.synapse(self.som, wse)
 
-		self.som.synapse(self.pyr, wes)
+		self.som.synapse(self.pyr, wes, STP = 'f')
 		self.som.synapse(self.vip, wvs)
 
-		self.pv.synapse(self.pyr, wep)
+		self.pv.synapse(self.pyr, wep, STP = 'd')
 		self.pv.synapse(self.pv, wpp)
 		self.pv.synapse(self.vip, wvp)
 		self.pv.synapse(self.som, wsp)
@@ -102,13 +105,14 @@ class CCM():
 		self.hidden_eq = False # Hidden equilibria, supra-saturation dynamics
 		if equilibria : 
 			self.S = self.equilibria()
-			self.critic = self.S[1]
+			try : self.critic = self.S[1]
+			except : self.critic = torch.as_tensor([10 for i in range(self.dim)], device = self.dev, dtype = torch.float64)
 		else : 
 			self.S = [None]
-			self.critic = torch.as_tensor([10,10,10,10], device = self.dev, dtype = torch.float64)
+			self.critic = torch.as_tensor([10 for i in range(self.dim)], device = self.dev, dtype = torch.float64)
 
 
-	def simulate(self, sim_prm = None, info=False, plot=False, dmts = False, cue_timings = [1], reject = None): # Maybe put reject in sim_prm
+	def simulate(self, sim_prm = None, info=False, plot=False, dmts = False, cue_timings = np.linspace(1,1.1,10), reject = None): # Maybe put reject in sim_prm
 		"""
 		
 		Returns raw simulated data corresponding to time-evolutions of CCM's latent variables. 
@@ -147,7 +151,7 @@ class CCM():
 		
 		window = sim_prm[0].item() # Stimulation window [s](float).
 		dt = sim_prm[1].item() # Time resolution [s](float).
-		atol, rtol = sim_prm[2].item(), sim_prm[3].item() # Absolute and relative tolerances for float comparison.
+		#atol, rtol = sim_prm[2].item(), sim_prm[3].item() # Absolute and relative tolerances for float comparison.
 		
 		if torch.isnan(sim_prm[4]):
 			torch.manual_seed(time.time())
@@ -162,15 +166,13 @@ class CCM():
 
 	### SIMULATION 
 
-		if plot:
-			tsr = torch.empty((19, N), device=self.dev, dtype=torch.float64)
-		else:
-			tsr = torch.empty((9, N), device=self.dev, dtype=torch.float64)
+		tsr = torch.empty((self.dim, N), device=self.dev, dtype=torch.float64)
 		stim = []
 	
 		for k in range(N):
 			
 			trans = 0.
+			#trans2 = 0.
 			if not dmts:
 				if self.poisson.sample().item() > 1: # Stimulation trigger.
 					trans = self.I_trans
@@ -178,23 +180,15 @@ class CCM():
 			else : 
 				if k*dt in cue_timings:
 					trans = self.I_trans
+				#if k*dt == 2 :
+				#	trans2 = self.I_trans
 
 			self.pyr.step(dt, self.n.sample().item(), trans = trans)
 			self.pv.step(dt, self.n.sample().item())
 			self.som.step(dt, self.n.sample().item())
 			self.vip.step(dt, self.n.sample().item())
 			
-			t = k * dt # Time [s](float).
-			tsr[self.TT, k] = t
-			
-			if plot:  # FIX THAT AS WELL
-				tsr[self.RE, k], tsr[self.dRE, k], tsr[self.INE_E, k], tsr[self.INS_E, k], tsr[self.IND_E, k], tsr[self.IE_ADP, k] = max(re, 0.), dre, ine_e, ins_e, ind_e, Ie_adp
-				tsr[self.RP, k], tsr[self.dRP, k], tsr[self.INE_P, k], tsr[self.INS_P, k] = max(rp, 0.), drp, ine_p, ins_p
-				tsr[self.RS, k], tsr[self.dRS, k], tsr[self.INE_S, k], tsr[self.INS_S, k] = max(rs, 0.), drs, ine_s, ins_s
-				tsr[self.RV, k], tsr[self.dRV, k], tsr[self.INE_V, k], tsr[self.INS_V, k] = max(rv, 0.), drv, ine_v, ins_v
-			else:
-				tsr[self.RE, k], tsr[self.RP, k], tsr[self.RS, k], tsr[self.RV, k] = self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr
-
+			for i in range(self.dim): tsr[i, k] = self.populations[i].fr
 
 		for pop in self.populations : pop.reset()		
 		
@@ -222,39 +216,28 @@ class CCM():
 			S = [[...], [...], ...] : NumPy-type list of 4-dimensional coordinates of dynamical equilibria.
 		
 		"""
+
+		dt = 0.01
+
 		def F(x):
 
-			dt = 0.01
-
-			for pop in self.populations : pop.deterministic()
-
-			self.pyr.fr = x[0]
-			self.pv.fr = x[1]
-			self.som.fr = x[2]
-			self.vip.fr = x[3]
-
-			dre = self.pyr.get_derivative(dt)
-			drp = self.pv.get_derivative(dt)
-			drs = self.som.get_derivative(dt)
-			drv = self.vip.get_derivative(dt)
-
-			for pop in self.populations : pop.reset()
-
-			return [dre, drp, drs, drv]
-			
-			#self.pyr.fr, self.pv.fr, self.som.fr, self.vip.fr = x[0], x[1], x[2], x[3]
-			#return [self.pyr.get_derivative(self.dt), self.pv.get_derivative(self.dt), self.som.get_derivative(self.dt), self.pv.get_derivative(self.dt)]
-
-		self.atol, self.rtol = 1e-12, 1e-3
+			#[pop.fr for pop in self.populations] = x
+			for i in range(self.dim) : self.populations[i].fr = x[i]
+			derivatives = [pop.get_derivative(dt) for pop in self.populations]
+			return derivatives
 		
-		S = [np.random.uniform(size=4)]
+		for pop in self.populations : pop.deterministic()
+
+		S = [np.random.uniform(size=self.dim)]
 		for k in range(1000):
-			x0 = [400*np.random.uniform(size=4) - 200]
+			x0 = [400*np.random.uniform(size=self.dim) - 200]
 			sol = optimize.root(F, x0, method='hybr')
 			#sol = optimize.fsolve(F, x0)
 			if not np.isclose(sol.x, S, atol=self.atol, rtol=self.rtol).any():
-				if np.isclose(F(sol.x), [0., 0., 0., 0.], atol=self.atol, rtol=self.rtol).all():
+				if np.isclose(F(sol.x), [0. for i in range(self.dim)], atol=self.atol, rtol=self.rtol).all():
 					S.append(sol.x)
+
+		for pop in self.populations : pop.reset()
 
 		S = S[1:]
 
@@ -263,7 +246,6 @@ class CCM():
 		for s in S:
 			if not np.array([fr < .45 for fr in [s[0] / self.Ae, s[1] / self.Ap, s[2] / self.As, s[3] /self.Av]]).all() :
 				# S.remove(s)	HERE bug : the truth value of an array with more than one element is ambiguous
-				print('smt')
 				self.hidden_eq = True
 		'''
 
